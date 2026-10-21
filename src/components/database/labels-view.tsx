@@ -34,6 +34,7 @@ export function LabelsView() {
   const [customW, setCustomW] = React.useState("60");
   const [customH, setCustomH] = React.useState("40");
   const [qrs, setQrs] = React.useState<Record<string, string>>({});
+  const qrsRef = React.useRef<Record<string, string>>({});
   const [generating, setGenerating] = React.useState(false);
 
   React.useEffect(() => {
@@ -53,26 +54,40 @@ export function LabelsView() {
     return { width: found?.width ?? 70, height: found?.height ?? 40 };
   }, [preset, customW, customH]);
 
+  /**
+   * Bangun data URL QR untuk 12 item pertama.
+   *
+   * Versi sebelumnya memasukkan `qrs` ke dalam dependency array sekaligus
+   * memanggil `setQrs({ ...qrs })` — objek baru setiap kali, sehingga efeknya
+   * memicu dirinya sendiri tanpa henti. Main thread beku, dan seluruh
+   * navigasi (termasuk klik tab Database) berhenti merespons.
+   *
+   * Sekarang: hanya bergantung pada `rows`, memakai functional update, dan
+   * berhenti total kalau tidak ada id baru yang perlu dibuat.
+   */
   React.useEffect(() => {
     let cancelled = false;
     const build = async () => {
-      const next: Record<string, string> = { ...qrs };
-      for (const row of rows.slice(0, 12)) {
-        if (next[row.id]) continue;
-        next[row.id] = await QRCode.toDataURL(`${window.location.origin}/i/${row.code}`, {
+      const targets = rows.slice(0, 12).filter((row) => !qrsRef.current[row.id]);
+      if (targets.length === 0) return;
+
+      const generated: Record<string, string> = {};
+      for (const row of targets) {
+        generated[row.id] = await QRCode.toDataURL(`${window.location.origin}/i/${row.code}`, {
           errorCorrectionLevel: "Q",
           margin: 1,
           width: 256,
         });
       }
-      if (!cancelled) setQrs(next);
+      if (cancelled) return;
+      qrsRef.current = { ...qrsRef.current, ...generated };
+      setQrs(qrsRef.current);
     };
     if (rows.length > 0) void build();
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, qrs]);
+  }, [rows, qrsRef]);
 
   const chosen = rows.filter((row) => selected.has(row.id));
 
