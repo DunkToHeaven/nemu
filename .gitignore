@@ -1,0 +1,12 @@
+node_modules/
+.next/
+out/
+build/
+coverage/
+test-results/
+playwright-report/
+.lighthouseci/
+*.tsbuildinfo
+.env*.local
+.DS_Store
+docs/*.png
