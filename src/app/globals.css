@@ -293,3 +293,24 @@
     color: #000;
   }
 }
+
+/* Nama item/SKU bisa sangat panjang tanpa spasi. Jangan pernah biarkan itu
+   membuat halaman bisa di-scroll horizontal. */
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+h1,
+h2,
+h3,
+p,
+span,
+td,
+th,
+li,
+dd,
+dt {
+  overflow-wrap: anywhere;
+}

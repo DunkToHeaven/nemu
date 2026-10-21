@@ -5,9 +5,18 @@ import { sim } from "@/mocks/store";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * Endpoint kendali simulasi (`__mock/*`) harus selalu bisa dihubungi. Tanpa
+ * pengecualian ini, menyalakan simulasi "offline" mengunci panel dev sendiri:
+ * semua API 503 termasuk permintaan untuk mematikannya lagi.
+ */
+function isControlPath(segments: string[]): boolean {
+  return segments[0] === "__mock";
+}
+
 async function dispatch(request: NextRequest, segments: string[]): Promise<NextResponse> {
   const state = sim();
-  if (state.offline) {
+  if (state.offline && !isControlPath(segments)) {
     return NextResponse.json(
       { error: { code: "OFFLINE", message: "Koneksi terputus. Periksa sinyal lalu coba lagi." } },
       { status: 503 },

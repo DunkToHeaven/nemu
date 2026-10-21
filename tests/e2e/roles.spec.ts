@@ -17,14 +17,30 @@ test.describe("isolasi role", () => {
     await expect(main.getByRole("link", { name: /^Riwayat$/ })).toBeVisible();
     await expect(main.getByRole("link", { name: /^Scan$/ })).toBeVisible();
 
-    for (const forbidden of [/Transaksi/i, /Opname/i, /^Laporan$/, /Pengaturan/i, /^Audit$/, /Integrasi/i]) {
+    for (const forbidden of [
+      /Transaksi/i,
+      /Opname/i,
+      /^Laporan$/,
+      /Pengaturan/i,
+      /^Audit$/,
+      /Integrasi/i,
+    ]) {
       await expect(main.getByRole("link", { name: forbidden })).toHaveCount(0);
     }
   });
 
-  test("worker ditolak saat membuka rute supervisor lewat URL langsung", async ({ page, loginAs }) => {
+  test("worker ditolak saat membuka rute supervisor lewat URL langsung", async ({
+    page,
+    loginAs,
+  }) => {
     await loginAs("worker");
-    for (const path of ["/app/opname", "/app/laporan", "/app/transaksi", "/app/database/lokasi", "/admin/settings"]) {
+    for (const path of [
+      "/app/opname",
+      "/app/laporan",
+      "/app/transaksi",
+      "/app/database/lokasi",
+      "/admin/settings",
+    ]) {
       const response = await page.request.get(path, { maxRedirects: 0 });
       expect(response.status(), `${path} harus ditolak untuk worker`).toBe(307);
     }
@@ -66,7 +82,7 @@ test.describe("isolasi role", () => {
     await page.context().clearCookies();
     const response = await page.request.get("/app/opname", { maxRedirects: 0 });
     expect(response.status()).toBe(307);
-    const location = response.headers()["location"] ?? "";
+    const location = response.headers().location ?? "";
     expect(location).toContain("/login");
     expect(location).toContain("next=%2Fapp%2Fopname");
   });

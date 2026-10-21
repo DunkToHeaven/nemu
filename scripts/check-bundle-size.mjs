@@ -33,11 +33,6 @@ if (!existsSync(".next/BUILD_ID")) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function fail(message) {
-  console.error(`\n  BUNDLE SIZE GAGAL: ${message}\n`);
-  process.exit(1);
-}
-
 async function waitForServer(timeoutMs = 90_000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
@@ -107,7 +102,8 @@ async function measure(path, cookie) {
     headers: cookie ? { cookie } : undefined,
     redirect: "manual",
   });
-  if (response.status !== 200) throw new Error(`${path} mengembalikan ${response.status} (butuh 200)`);
+  if (response.status !== 200)
+    throw new Error(`${path} mengembalikan ${response.status} (butuh 200)`);
   const html = await response.text();
   const sources = modernScripts(html);
   if (sources.length === 0) throw new Error(`${path} tidak memuat chunk JS`);
@@ -139,8 +135,10 @@ try {
   BUDGETS[1].path = `/i/${await firstItemCode(cookie)}`;
 
   console.log("\n  Anggaran JS awal (gzip, muatan awal yang benar-benar dieksekusi)");
-  console.log("  " + "-".repeat(72));
-  console.log(`  ${"rute".padEnd(14)}${"total".padStart(11)}${"batas".padStart(10)}${"framework".padStart(12)}${"aplikasi".padStart(11)}  status`);
+  console.log(`  ${"-".repeat(72)}`);
+  console.log(
+    `  ${"rute".padEnd(14)}${"total".padStart(11)}${"batas".padStart(10)}${"framework".padStart(12)}${"aplikasi".padStart(11)}  status`,
+  );
 
   for (const budget of BUDGETS) {
     const result = await measure(budget.path, cookie);
@@ -150,10 +148,16 @@ try {
       `  ${budget.route.padEnd(14)}${`${result.total.toFixed(1)} KB`.padStart(11)}${`${budget.limitKb} KB`.padStart(10)}${`${result.framework.toFixed(1)} KB`.padStart(12)}${`${result.app.toFixed(1)} KB`.padStart(11)}  ${ok ? "OK" : "LEWAT"}`,
     );
   }
-  console.log("  " + "-".repeat(72));
-  console.log(exitCode === 0 ? "  Semua rute dalam anggaran.\n" : "  Ada rute yang melewati anggaran PRD bagian 4.\n");
+  console.log(`  ${"-".repeat(72)}`);
+  console.log(
+    exitCode === 0
+      ? "  Semua rute dalam anggaran.\n"
+      : "  Ada rute yang melewati anggaran PRD bagian 4.\n",
+  );
 } catch (error) {
-  console.error(`\n  BUNDLE SIZE GAGAL: ${error instanceof Error ? error.message : String(error)}\n`);
+  console.error(
+    `\n  BUNDLE SIZE GAGAL: ${error instanceof Error ? error.message : String(error)}\n`,
+  );
   exitCode = 1;
 } finally {
   server.kill("SIGTERM");

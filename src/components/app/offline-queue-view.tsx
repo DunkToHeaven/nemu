@@ -8,11 +8,17 @@ import { EmptyState, ListSkeleton } from "@/components/app/states";
 import { Icon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { api, ApiError } from "@/lib/api/client";
+import { ApiError, api } from "@/lib/api/client";
 import { keys } from "@/lib/api/keys";
 import { flags } from "@/lib/flags";
 import { relativeTime } from "@/lib/format";
-import { clearQueue, listQueue, removeEntry, updateEntry, type QueuedTx } from "@/lib/offline-queue";
+import {
+  clearQueue,
+  listQueue,
+  type QueuedTx,
+  removeEntry,
+  updateEntry,
+} from "@/lib/offline-queue";
 import { cn } from "@/lib/utils";
 
 const STATUS_TONE = {
@@ -100,8 +106,14 @@ export function OfflineQueueView() {
 
       <div className="grid grid-cols-3 gap-2">
         <Stat label={t("statPending")} value={pending.length} />
-        <Stat label={t("statReview")} value={rows.filter((row) => row.status === "needs_review").length} />
-        <Stat label={t("statFailed")} value={rows.filter((row) => row.status === "failed").length} />
+        <Stat
+          label={t("statReview")}
+          value={rows.filter((row) => row.status === "needs_review").length}
+        />
+        <Stat
+          label={t("statFailed")}
+          value={rows.filter((row) => row.status === "failed").length}
+        />
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -110,7 +122,11 @@ export function OfflineQueueView() {
           onClick={() => sync.mutate(pending)}
           disabled={pending.length === 0 || !online || sync.isPending}
         >
-          {sync.isPending ? <Icon name="spinner" className="size-4 animate-spin" /> : <Icon name="refresh" className="size-4" />}
+          {sync.isPending ? (
+            <Icon name="spinner" className="size-4 animate-spin" />
+          ) : (
+            <Icon name="refresh" className="size-4" />
+          )}
           {sync.isPending ? t("syncing") : t("syncNow", { count: pending.length })}
         </Button>
         <Button
@@ -136,22 +152,38 @@ export function OfflineQueueView() {
           {rows.map((row) => (
             <li key={row.id} className="flex flex-col gap-1.5 px-4 py-3">
               <div className="flex items-center gap-2">
-                <Badge tone={STATUS_TONE[row.status]}>{t(`status_${row.status}` as "status_pending")}</Badge>
+                <Badge tone={STATUS_TONE[row.status]}>
+                  {t(`status_${row.status}` as "status_pending")}
+                </Badge>
                 <span className="min-w-0 flex-1 truncate text-[13px] font-bold">{row.label}</span>
-                <span className="text-2xs text-muted-foreground">{relativeTime(new Date(row.createdAt).toISOString(), locale)}</span>
+                <span className="text-2xs text-muted-foreground">
+                  {relativeTime(new Date(row.createdAt).toISOString(), locale)}
+                </span>
               </div>
               <p className="text-2xs text-muted-foreground">
                 {row.payload.type} · {row.payload.qty} · {row.payload.itemCode}
                 {row.attempts > 0 ? ` · ${t("attempts", { count: row.attempts })}` : ""}
               </p>
               {row.lastError ? (
-                <p className={cn("rounded-lg px-2 py-1 text-2xs font-semibold", row.status === "needs_review" ? "bg-warning-soft text-warning-foreground" : "bg-danger-soft text-danger-foreground")}>
+                <p
+                  className={cn(
+                    "rounded-lg px-2 py-1 text-2xs font-semibold",
+                    row.status === "needs_review"
+                      ? "bg-warning-soft text-warning-foreground"
+                      : "bg-danger-soft text-danger-foreground",
+                  )}
+                >
                   {row.lastError}
                 </p>
               ) : null}
               {row.status === "needs_review" || row.status === "failed" ? (
                 <div className="flex gap-2">
-                  <Button size="sm" variant="secondary" className="h-8" onClick={() => sync.mutate([row])}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="h-8"
+                    onClick={() => sync.mutate([row])}
+                  >
                     {t("retry")}
                   </Button>
                   <Button

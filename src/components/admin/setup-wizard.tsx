@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { api, ApiError } from "@/lib/api/client";
+import { ApiError, api } from "@/lib/api/client";
 import { keys } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
 
@@ -37,8 +37,14 @@ export function SetupWizard() {
   const [done, setDone] = React.useState(false);
 
   const settings = useQuery({ queryKey: keys.settings, queryFn: () => api.admin.settings() });
-  const items = useQuery({ queryKey: keys.items({ setup: true }), queryFn: () => api.items.list({ limit: 1 }) });
-  const locations = useQuery({ queryKey: keys.locations({ setup: true }), queryFn: () => api.master.locations() });
+  const items = useQuery({
+    queryKey: keys.items({ setup: true }),
+    queryFn: () => api.items.list({ limit: 1 }),
+  });
+  const locations = useQuery({
+    queryKey: keys.locations({ setup: true }),
+    queryFn: () => api.master.locations(),
+  });
   const users = useQuery({ queryKey: keys.users, queryFn: () => api.master.users() });
   const google = useQuery({ queryKey: keys.google, queryFn: () => api.admin.google() });
 
@@ -59,7 +65,13 @@ export function SetupWizard() {
     onError: (error) => toast.error(error instanceof ApiError ? error.message : t("orgError")),
   });
 
-  if (settings.isLoading || items.isLoading || locations.isLoading || users.isLoading || google.isLoading) {
+  if (
+    settings.isLoading ||
+    items.isLoading ||
+    locations.isLoading ||
+    users.isLoading ||
+    google.isLoading
+  ) {
     return <ListSkeleton rows={6} />;
   }
   if (settings.isError) return <ErrorState onRetry={() => void settings.refetch()} />;
@@ -68,18 +80,62 @@ export function SetupWizard() {
   const locationCount = locations.data?.data.length ?? 0;
   const hasAdmin = (users.data?.data ?? []).some((user) => user.role === "admin" && user.active);
   const googleConnected = google.data?.integration.connected ?? false;
-  const labelsPrinted = typeof window !== "undefined" && window.localStorage.getItem("nemu.labels.printed") === "1";
+  const labelsPrinted =
+    typeof window !== "undefined" && window.localStorage.getItem("nemu.labels.printed") === "1";
 
   const steps: Step[] = [
-    { id: "admin", titleKey: "stepAdminTitle", bodyKey: "stepAdminBody", ctaKey: "stepAdminCta", href: "/app/database/pengguna", icon: "shield", done: hasAdmin },
-    { id: "locations", titleKey: "stepLocationsTitle", bodyKey: "stepLocationsBody", ctaKey: "stepLocationsCta", href: "/app/database/lokasi", icon: "boxes", done: locationCount > 0 },
-    { id: "items", titleKey: "stepItemsTitle", bodyKey: "stepItemsBody", ctaKey: "stepItemsCta", href: "/app/database/impor", icon: "upload", done: itemCount > 0 },
-    { id: "labels", titleKey: "stepLabelsTitle", bodyKey: "stepLabelsBody", ctaKey: "stepLabelsCta", href: "/app/database/label", icon: "print", done: labelsPrinted, optional: true },
-    { id: "google", titleKey: "stepGoogleTitle", bodyKey: "stepGoogleBody", ctaKey: "stepGoogleCta", href: "/admin/integrations/google", icon: "cloud", done: googleConnected, optional: true },
+    {
+      id: "admin",
+      titleKey: "stepAdminTitle",
+      bodyKey: "stepAdminBody",
+      ctaKey: "stepAdminCta",
+      href: "/app/database/pengguna",
+      icon: "shield",
+      done: hasAdmin,
+    },
+    {
+      id: "locations",
+      titleKey: "stepLocationsTitle",
+      bodyKey: "stepLocationsBody",
+      ctaKey: "stepLocationsCta",
+      href: "/app/database/lokasi",
+      icon: "boxes",
+      done: locationCount > 0,
+    },
+    {
+      id: "items",
+      titleKey: "stepItemsTitle",
+      bodyKey: "stepItemsBody",
+      ctaKey: "stepItemsCta",
+      href: "/app/database/impor",
+      icon: "upload",
+      done: itemCount > 0,
+    },
+    {
+      id: "labels",
+      titleKey: "stepLabelsTitle",
+      bodyKey: "stepLabelsBody",
+      ctaKey: "stepLabelsCta",
+      href: "/app/database/label",
+      icon: "print",
+      done: labelsPrinted,
+      optional: true,
+    },
+    {
+      id: "google",
+      titleKey: "stepGoogleTitle",
+      bodyKey: "stepGoogleBody",
+      ctaKey: "stepGoogleCta",
+      href: "/admin/integrations/google",
+      icon: "cloud",
+      done: googleConnected,
+      optional: true,
+    },
   ];
 
   const required = steps.filter((step) => !step.optional);
-  const requiredDone = required.filter((step) => step.done).length + (settings.data?.settings.orgName ? 1 : 0);
+  const requiredDone =
+    required.filter((step) => step.done).length + (settings.data?.settings.orgName ? 1 : 0);
   const totalRequired = required.length + 1;
   const progress = Math.round((requiredDone / totalRequired) * 100);
 
@@ -99,7 +155,9 @@ export function SetupWizard() {
 
       <section className="space-y-2 rounded-2xl border border-border bg-card p-4">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[13px] font-bold">{t("progress", { done: requiredDone, total: totalRequired })}</p>
+          <p className="text-[13px] font-bold">
+            {t("progress", { done: requiredDone, total: totalRequired })}
+          </p>
           <span className="tnum text-2xs font-bold text-muted-foreground">{progress}%</span>
         </div>
         <div
@@ -110,7 +168,10 @@ export function SetupWizard() {
           aria-label={t("progressLabel")}
           className="h-2 overflow-hidden rounded-full bg-muted"
         >
-          <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${progress}%` }} />
+          <div
+            className="h-full rounded-full bg-primary transition-[width]"
+            style={{ width: `${progress}%` }}
+          />
         </div>
         {done ? (
           <p className="flex items-center gap-1.5 rounded-xl bg-success-soft px-3 py-2 text-2xs font-bold text-success-foreground">
@@ -144,7 +205,11 @@ export function SetupWizard() {
             onClick={() => saveOrg.mutate()}
             disabled={orgName.trim().length < 2 || saveOrg.isPending}
           >
-            {saveOrg.isPending ? <Icon name="spinner" className="size-4 animate-spin" /> : <Icon name="check" className="size-4" />}
+            {saveOrg.isPending ? (
+              <Icon name="spinner" className="size-4 animate-spin" />
+            ) : (
+              <Icon name="check" className="size-4" />
+            )}
             {t("stepOrgCta")}
           </Button>
         </div>
@@ -162,7 +227,9 @@ export function SetupWizard() {
             <span
               className={cn(
                 "grid size-9 shrink-0 place-items-center rounded-xl",
-                step.done ? "bg-success-soft text-success-foreground" : "bg-muted text-muted-foreground",
+                step.done
+                  ? "bg-success-soft text-success-foreground"
+                  : "bg-muted text-muted-foreground",
               )}
             >
               <Icon name={step.done ? "check" : step.icon} className="size-4" />
@@ -175,15 +242,26 @@ export function SetupWizard() {
                 {step.optional ? <Badge tone="neutral">{t("optional")}</Badge> : null}
                 {step.done ? <Badge tone="success">{t("done")}</Badge> : null}
               </div>
-              <p className="mt-0.5 text-2xs text-muted-foreground">{t(step.bodyKey as "stepAdminBody")}</p>
+              <p className="mt-0.5 text-2xs text-muted-foreground">
+                {t(step.bodyKey as "stepAdminBody")}
+              </p>
               {step.id === "items" && itemCount > 0 ? (
-                <p className="tnum mt-1 text-2xs font-bold">{t("itemsPresent", { count: itemCount })}</p>
+                <p className="tnum mt-1 text-2xs font-bold">
+                  {t("itemsPresent", { count: itemCount })}
+                </p>
               ) : null}
               {step.id === "locations" && locationCount > 0 ? (
-                <p className="tnum mt-1 text-2xs font-bold">{t("locationsPresent", { count: locationCount })}</p>
+                <p className="tnum mt-1 text-2xs font-bold">
+                  {t("locationsPresent", { count: locationCount })}
+                </p>
               ) : null}
             </div>
-            <Button asChild size="sm" variant={step.done ? "ghost" : "secondary"} className="shrink-0">
+            <Button
+              asChild
+              size="sm"
+              variant={step.done ? "ghost" : "secondary"}
+              className="shrink-0"
+            >
               <Link href={step.href}>{t(step.ctaKey as "stepAdminCta")}</Link>
             </Button>
           </li>

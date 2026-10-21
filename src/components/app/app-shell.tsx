@@ -7,7 +7,6 @@ import { TabBar } from "@/components/app/tab-bar";
 import { SkipLink, TopBar } from "@/components/app/top-bar";
 import { CustodyReminder } from "@/components/custody/custody-reminder";
 import { DevPanel } from "@/components/dev/dev-panel";
-import { SessionExpiredDialog } from "@/components/session-expired-dialog";
 import { useSession } from "@/components/session-provider";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -34,7 +33,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <TabBar role={role} />
       <CustodyReminder />
       <DevPanel />
-      <SessionExpiredDialog />
     </div>
   );
 }

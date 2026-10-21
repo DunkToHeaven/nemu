@@ -72,3 +72,19 @@ sementara, HTML rute diambil, lalu setiap `<script>` muatan awal dijumlahkan
 setelah gzip. Script `noModule` (polyfill core-js untuk browser lama) tidak
 dihitung karena browser modern tidak pernah mengunduhnya — menghitungnya membuat
 angka membengkak 38,7 KB secara palsu.
+
+## Ronde 3 — perbaikan temuan + kasus tepi
+
+Temuan yang ditutup pada ronde ini (semua diverifikasi ulang dengan tes):
+
+| ID | Severitas | Temuan | Perbaikan |
+| --- | --- | --- | --- |
+| F-017 | blocker | Simulasi "offline" mengunci endpoint `__mock/*` sendiri, sehingga panel dev tidak bisa mematikannya lagi (deadlock) | `isControlPath()` di route handler; `__mock/*` selalu dapat dihubungi |
+| F-018 | major | Item stok 0 menampilkan tombol Ambil yang mati tanpa penjelasan | Panel `take-empty-stock` menjelaskan rak kosong + saran lapor supervisor |
+| F-019 | major | `/i/[kode]` menampilkan "Item nonaktif" untuk **semua** error, termasuk 401 dan 500 | Tiga keadaan dipisah: 404, 410, dan error umum |
+| F-020 | major | Dialog "sesi berakhir" tidak pernah muncul di `/i/[kode]` dan `/scan` karena keduanya di luar `AppShell` | `SessionExpiredDialog` dipindah ke `Providers` (global) |
+| F-021 | major | Nama item panjang membuat halaman bisa di-scroll horizontal (502 px overflow) | `overflow-wrap: anywhere` + `overflow-x: clip` global, `break-words` di judul |
+| F-022 | minor | Tes E2E memakai WebKit untuk tablet padahal channel Chromium | Profil tablet memakai Chromium 768 px |
+
+Bukti: `tests/e2e/edge-cases.spec.ts` 10/10 lulus (desktop).
+

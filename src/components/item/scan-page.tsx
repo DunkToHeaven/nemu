@@ -64,8 +64,12 @@ export function ScanPage({ code }: { code: string }) {
 
   if (isError) {
     const apiError = error instanceof ApiError ? error : null;
+    // Tiga keadaan berbeda, tiga pesan berbeda. Menyamakan 401/500 dengan
+    // "item nonaktif" menyesatkan pekerja: mereka akan melapor item yang salah.
     const notFound = apiError?.status === 404;
-    const _inactive = apiError?.status === 410;
+    const inactive = apiError?.status === 410;
+    const title = notFound ? ti("notFound") : inactive ? ti("inactive") : ti("errorTitle");
+    const body = notFound ? ti("notFoundBody") : inactive ? ti("inactiveBody") : ti("errorBody");
     return (
       <div className="mx-auto max-w-lg space-y-4">
         <Button asChild variant="ghost" size="sm">
@@ -76,14 +80,16 @@ export function ScanPage({ code }: { code: string }) {
         </Button>
         <EmptyState
           icon={notFound ? "search" : "alert"}
-          title={notFound ? ti("notFound") : ti("inactive")}
-          body={notFound ? ti("notFoundBody") : ti("inactiveBody")}
+          title={title}
+          body={body}
           action={
             <div className="flex flex-wrap justify-center gap-2">
-              <Button onClick={() => void refetch()} variant="secondary" size="sm">
-                <Icon name="refresh" className="size-4" />
-                {ti("manualCodeSubmit")}
-              </Button>
+              {notFound || inactive ? null : (
+                <Button onClick={() => void refetch()} variant="secondary" size="sm">
+                  <Icon name="refresh" className="size-4" />
+                  {ti("manualCodeSubmit")}
+                </Button>
+              )}
               <Button asChild size="sm">
                 <Link href="/scan">{t("scanMethodInApp")}</Link>
               </Button>
@@ -154,7 +160,7 @@ export function ScanPage({ code }: { code: string }) {
             <Icon name="box" className="size-7" />
           </span>
           <div className="min-w-0 flex-1">
-            <h1 className="text-lg font-extrabold leading-tight tracking-[-0.01em]">
+            <h1 className="text-lg font-extrabold leading-tight tracking-[-0.01em] [overflow-wrap:anywhere] break-words">
               {data.item.name}
             </h1>
             <p className="mt-0.5 font-mono text-2xs text-muted-foreground">

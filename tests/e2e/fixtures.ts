@@ -1,4 +1,4 @@
-import { expect, type Page, test as base } from "@playwright/test";
+import { test as base, expect, type Page } from "@playwright/test";
 
 export const ACCOUNTS = {
   worker: { code: "WRK01", pin: "1122" },

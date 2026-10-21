@@ -389,7 +389,9 @@
     "countRackHint": "Hitung fisik tanpa mengambil barang",
     "whyTitle": "Kenapa skor ini?",
     "takenByOthers": "Dibawa orang lain",
-    "lastUpdated": "Diperbarui {when}"
+    "lastUpdated": "Diperbarui {when}",
+    "errorTitle": "Gagal memuat item",
+    "errorBody": "Sinyal atau server bermasalah. Coba lagi sebentar."
   },
   "database": {
     "title": "Database",
@@ -857,7 +859,9 @@
     "scanMethod": "Metode scan: {method}",
     "scanMethodQr": "Kamera QR",
     "scanMethodInApp": "Scanner aplikasi",
-    "scanMethodManual": "Kode manual"
+    "scanMethodManual": "Kode manual",
+    "emptyStockTitle": "Stok di rak ini kosong",
+    "emptyStockBody": "Tidak ada yang bisa diambil. Lapor supervisor supaya dilakukan opname atau isi ulang."
   },
   "confirm": {
     "title": "Tercatat",

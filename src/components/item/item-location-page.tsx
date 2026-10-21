@@ -99,7 +99,7 @@ export function ItemLocationPage({ id }: { id: string }) {
             <Icon name="box" className="size-8" />
           </span>
           <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-extrabold leading-tight tracking-[-0.01em]">
+            <h1 className="text-xl font-extrabold leading-tight tracking-[-0.01em] [overflow-wrap:anywhere] break-words">
               {data.item.name}
             </h1>
             <p className="mt-1 font-mono text-2xs text-muted-foreground">

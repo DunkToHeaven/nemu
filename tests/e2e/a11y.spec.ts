@@ -34,7 +34,10 @@ for (const route of ROUTES) {
       (violation) => violation.impact === "serious" || violation.impact === "critical",
     );
     expect(
-      serious.map((violation) => `${violation.id} (${violation.impact}) x${violation.nodes.length}: ${violation.help}`),
+      serious.map(
+        (violation) =>
+          `${violation.id} (${violation.impact}) x${violation.nodes.length}: ${violation.help}`,
+      ),
       `pelanggaran aksesibilitas serius di ${route.path}`,
     ).toEqual([]);
   });
@@ -55,7 +58,10 @@ test("axe: /app dalam mode gelap", async ({ page, loginAs }) => {
   expect(serious.map((violation) => `${violation.id}: ${violation.help}`)).toEqual([]);
 });
 
-test("keyboard: Tab mencapai navigasi utama dan Ctrl+K membuka palette", async ({ page, loginAs }) => {
+test("keyboard: Tab mencapai navigasi utama dan Ctrl+K membuka palette", async ({
+  page,
+  loginAs,
+}) => {
   await loginAs("worker");
   await page.goto("/app");
 

@@ -13,8 +13,6 @@ export default defineConfig({
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : [["list"]],
   use: {
     baseURL,
-    // Memakai build Chromium penuh (bukan headless shell) agar tidak butuh unduhan terpisah.
-    channel: "chromium",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     locale: "id-ID",

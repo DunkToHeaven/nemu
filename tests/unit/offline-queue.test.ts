@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildSeed } from "@/mocks/seed";
 import { syncBatch } from "@/mocks/handlers/tx";
-import { store } from "@/mocks/store";
 import type { ApiRequest } from "@/mocks/http";
+import { buildSeed } from "@/mocks/seed";
+import { store } from "@/mocks/store";
 
 function request(body: unknown, token?: string): ApiRequest {
   return {
@@ -90,7 +90,11 @@ describe("antrean offline (OF-02…OF-04)", () => {
 
     const response = syncBatch(
       request(
-        { transactions: [{ ...sampleTx(item.code, level.locationId, "offline-key-409"), qty: 99_999 }] },
+        {
+          transactions: [
+            { ...sampleTx(item.code, level.locationId, "offline-key-409"), qty: 99_999 },
+          ],
+        },
         token,
       ),
     );

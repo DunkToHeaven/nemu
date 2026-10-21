@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { needsCount, sortByConfidenceAsc, stockStatus, stockStatusLabelKey } from "@/lib/domain/stock";
+import {
+  needsCount,
+  sortByConfidenceAsc,
+  stockStatus,
+  stockStatusLabelKey,
+} from "@/lib/domain/stock";
 
 describe("status stok (SC-11)", () => {
   it("0 berarti kosong", () => {
@@ -39,7 +44,11 @@ describe("opname terarah (OP-04)", () => {
   });
 
   it("diurutkan skor terendah dulu", () => {
-    const rows = [{ confidence: { score: 70 } }, { confidence: { score: 10 } }, { confidence: { score: 40 } }];
+    const rows = [
+      { confidence: { score: 70 } },
+      { confidence: { score: 10 } },
+      { confidence: { score: 40 } },
+    ];
     expect(sortByConfidenceAsc(rows).map((row) => row.confidence.score)).toEqual([10, 40, 70]);
   });
 

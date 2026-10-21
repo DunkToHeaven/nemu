@@ -3,10 +3,10 @@ import {
   DEFAULT_PROMPT_PARAMS,
   decidePrompt,
   nextConsecutiveMatches,
+  type PromptDecisionInput,
   promptProbability,
   seededUnit,
   varianceFor,
-  type PromptDecisionInput,
 } from "@/lib/domain/verification";
 
 const now = new Date("2026-03-01T12:00:00.000Z");
@@ -43,20 +43,40 @@ describe("selisih (CV-04)", () => {
 
 describe("peluang bertanya (CV-06)", () => {
   it("keyakinan rendah menaikkan peluang", () => {
-    const low = promptProbability({ confidenceScore: 10, unitValueHigh: false, hadVariance90d: false });
-    const high = promptProbability({ confidenceScore: 95, unitValueHigh: false, hadVariance90d: false });
+    const low = promptProbability({
+      confidenceScore: 10,
+      unitValueHigh: false,
+      hadVariance90d: false,
+    });
+    const high = promptProbability({
+      confidenceScore: 95,
+      unitValueHigh: false,
+      hadVariance90d: false,
+    });
     expect(low).toBeGreaterThan(high);
   });
 
   it("nilai satuan tinggi dan riwayat selisih menambah peluang", () => {
-    const base = promptProbability({ confidenceScore: 60, unitValueHigh: false, hadVariance90d: false });
-    const boosted = promptProbability({ confidenceScore: 60, unitValueHigh: true, hadVariance90d: true });
+    const base = promptProbability({
+      confidenceScore: 60,
+      unitValueHigh: false,
+      hadVariance90d: false,
+    });
+    const boosted = promptProbability({
+      confidenceScore: 60,
+      unitValueHigh: true,
+      hadVariance90d: true,
+    });
     expect(boosted).toBeGreaterThan(base);
   });
 
   it("selalu dalam batas pMin…pMax", () => {
     for (const score of [0, 25, 50, 75, 100]) {
-      const p = promptProbability({ confidenceScore: score, unitValueHigh: true, hadVariance90d: true });
+      const p = promptProbability({
+        confidenceScore: score,
+        unitValueHigh: true,
+        hadVariance90d: true,
+      });
       expect(p).toBeGreaterThanOrEqual(DEFAULT_PROMPT_PARAMS.pMin);
       expect(p).toBeLessThanOrEqual(DEFAULT_PROMPT_PARAMS.pMax);
     }
@@ -77,7 +97,9 @@ describe("keputusan bertanya (CV-01…CV-10)", () => {
   });
 
   it("sisa di atas ambang tidak ditanya", () => {
-    const decision = decidePrompt(input({ qtyAfterIssue: DEFAULT_PROMPT_PARAMS.countThreshold + 1 }));
+    const decision = decidePrompt(
+      input({ qtyAfterIssue: DEFAULT_PROMPT_PARAMS.countThreshold + 1 }),
+    );
     expect(decision.ask).toBe(false);
     expect(decision.reason).toBe("threshold");
   });

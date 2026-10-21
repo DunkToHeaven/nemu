@@ -216,7 +216,9 @@
     "countRackHint": "Count physically without picking",
     "whyTitle": "Why this score?",
     "takenByOthers": "Carried by others",
-    "lastUpdated": "Updated {when}"
+    "lastUpdated": "Updated {when}",
+    "errorTitle": "Could not load the item",
+    "errorBody": "The signal or the server is having trouble. Try again shortly."
   },
   "landing": {
     "badge": "Open source · QR-based WMS",
@@ -366,7 +368,9 @@
     "scanMethod": "Scan method: {method}",
     "scanMethodQr": "QR camera",
     "scanMethodInApp": "In-app scanner",
-    "scanMethodManual": "Manual code"
+    "scanMethodManual": "Manual code",
+    "emptyStockTitle": "This rack has no stock",
+    "emptyStockBody": "Nothing to pick here. Tell a supervisor so the rack is counted or refilled."
   },
   "confirm": {
     "title": "Recorded",

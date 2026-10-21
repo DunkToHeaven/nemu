@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import * as React from "react";
+import { SessionExpiredDialog } from "@/components/session-expired-dialog";
 import { SessionProvider } from "@/components/session-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -29,7 +30,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <QueryClientProvider client={queryClient}>
         <SessionProvider>
-          <TooltipProvider delayDuration={250}>{children}</TooltipProvider>
+          <TooltipProvider delayDuration={250}>
+            {children}
+            {/* Global: /i/[kode] dan /scan tidak memakai AppShell, jadi dialog
+                sesi berakhir tidak boleh hanya dipasang di dalam shell. */}
+            <SessionExpiredDialog />
+          </TooltipProvider>
         </SessionProvider>
       </QueryClientProvider>
     </ThemeProvider>

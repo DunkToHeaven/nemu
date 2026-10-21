@@ -47,7 +47,12 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-function tx<T>(db: IDBDatabase, store: string, mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+function tx<T>(
+  db: IDBDatabase,
+  store: string,
+  mode: IDBTransactionMode,
+  run: (s: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(store, mode);
     const request = run(transaction.objectStore(store));
@@ -57,9 +62,9 @@ function tx<T>(db: IDBDatabase, store: string, mode: IDBTransactionMode, run: (s
 }
 
 async function nextSeq(db: IDBDatabase): Promise<number> {
-  const current = (await tx<{ key: string; value: number } | undefined>(db, META, "readonly", (s) => s.get("seq"))) as
-    | { key: string; value: number }
-    | undefined;
+  const current = (await tx<{ key: string; value: number } | undefined>(db, META, "readonly", (s) =>
+    s.get("seq"),
+  )) as { key: string; value: number } | undefined;
   const value = (current?.value ?? 0) + 1;
   await tx(db, META, "readwrite", (s) => s.put({ key: "seq", value }));
   return value;

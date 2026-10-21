@@ -63,7 +63,10 @@ test.describe("alur inti pekerja", () => {
     await expect(page.getByTestId("qty-input")).toBeVisible();
   });
 
-  test("halaman /i/[kode] menampilkan form ambil dengan target sentuh besar", async ({ page, loginAs }) => {
+  test("halaman /i/[kode] menampilkan form ambil dengan target sentuh besar", async ({
+    page,
+    loginAs,
+  }) => {
     await loginAs("worker");
     const response = await page.request.get("/api/v1/items/search?q=a&limit=1");
     const payload = (await response.json()) as { data: { item: { code: string } }[] };

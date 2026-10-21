@@ -1,9 +1,9 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { useLocale, useTranslations } from "next-intl";
 import * as React from "react";
+import { toast } from "sonner";
 import { Icon } from "@/components/icons";
 import { useSession } from "@/components/session-provider";
 import { QtyStepper } from "@/components/take/qty-stepper";
@@ -20,9 +20,9 @@ import {
 import { ApiError, api, type ItemDetailResponse, type TransactionResponse } from "@/lib/api/client";
 import { keys } from "@/lib/api/keys";
 import { clearDraft, draftKey, readDraft, saveDraft } from "@/lib/draft";
+import { flags } from "@/lib/flags";
 import { formatQty } from "@/lib/format";
 import { enqueue } from "@/lib/offline-queue";
-import { flags } from "@/lib/flags";
 import { cn, uuidv7 } from "@/lib/utils";
 
 export type TakeMode = "issue" | "return" | "receive";
@@ -125,10 +125,13 @@ export function TakeForm({
     onError: (cause) => {
       // OF-01…04: sinyal putus → simpan ke antrean perangkat, bukan gagal.
       const networkFailure =
-        !(cause instanceof ApiError) ||
-        cause.code === "CONTRACT_MISMATCH" ||
-        cause.status >= 500;
-      if (flags.offline && networkFailure && typeof navigator !== "undefined" && !navigator.onLine) {
+        !(cause instanceof ApiError) || cause.code === "CONTRACT_MISMATCH" || cause.status >= 500;
+      if (
+        flags.offline &&
+        networkFailure &&
+        typeof navigator !== "undefined" &&
+        !navigator.onLine
+      ) {
         const payload = {
           itemCode: detail.item.code,
           locationId,
@@ -140,7 +143,11 @@ export function TakeForm({
           idempotencyKey: idempotencyRef.current,
           scanMethod: "in_app_scanner" as const,
         };
-        void enqueue({ payload, userId: user?.id ?? "anon", label: `${detail.item.name} · ${numericQty}` })
+        void enqueue({
+          payload,
+          userId: user?.id ?? "anon",
+          label: `${detail.item.name} · ${numericQty}`,
+        })
           .then(() => {
             clearDraft(key);
             setError(null);
@@ -327,6 +334,20 @@ export function TakeForm({
           maxLength={500}
         />
       </div>
+
+      {mode === "issue" && available <= 0 ? (
+        <div
+          role="alert"
+          data-testid="take-empty-stock"
+          className="space-y-1.5 rounded-xl border border-warning/40 bg-warning-soft px-3 py-2.5"
+        >
+          <p className="flex items-center gap-1.5 text-[13px] font-bold text-warning-foreground">
+            <Icon name="triangle" className="size-4" />
+            {t("emptyStockTitle")}
+          </p>
+          <p className="text-2xs text-warning-foreground/90">{t("emptyStockBody")}</p>
+        </div>
+      ) : null}
 
       {error ? (
         <p

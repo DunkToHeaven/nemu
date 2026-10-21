@@ -80,13 +80,22 @@ export function isPublicPath(pathname: string): boolean {
   );
 }
 
+/** Kontrol karakter (NUL..US, DEL) bisa dipakai untuk header injection. */
+function hasControlChars(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
+
 /** `next` hanya boleh path internal (SC-02 + proteksi open redirect). */
 export function safeNext(value: string | null | undefined, fallback = "/app"): string {
   if (!value) return fallback;
   const trimmed = value.trim();
   if (!trimmed.startsWith("/")) return fallback;
   // Kontrol karakter (newline, CR, tab) bisa dipakai untuk header injection.
-  if (/[\u0000-\u001f\u007f]/.test(trimmed)) return fallback;
+  if (hasControlChars(trimmed)) return fallback;
   if (trimmed.startsWith("//")) return fallback;
   if (trimmed.includes("\\")) return fallback;
   if (/^\/\s*\//.test(trimmed)) return fallback;
