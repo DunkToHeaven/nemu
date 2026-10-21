@@ -94,8 +94,7 @@ export function OpnameView() {
             key={entry.key}
             type="button"
             onClick={() => setTab(entry.key)}
-            aria-selected={tab === entry.key}
-            role="tab"
+            aria-pressed={tab === entry.key}
             className={cn(
               "min-h-9 shrink-0 rounded-full px-3.5 text-[13px] font-bold transition-colors",
               tab === entry.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
@@ -103,7 +102,9 @@ export function OpnameView() {
           >
             {entry.label}
             {entry.count > 0 ? (
-              <span className="tnum ml-1.5 text-2xs opacity-70">{entry.count}</span>
+              <span className="tnum ml-1.5 text-2xs font-bold text-muted-foreground">
+                {entry.count}
+              </span>
             ) : null}
           </button>
         ))}

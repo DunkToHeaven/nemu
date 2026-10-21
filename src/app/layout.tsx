@@ -3,7 +3,7 @@ import localFont from "next/font/local";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import { Providers } from "@/components/providers";
-import { Toaster } from "@/components/ui/sonner";
+import { LazyToaster } from "@/components/ui/lazy-toaster";
 import "./globals.css";
 
 const jakarta = localFont({
@@ -48,7 +48,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <NextIntlClientProvider locale={locale} messages={messages} timeZone="Asia/Jakarta">
           <Providers>{children}</Providers>
         </NextIntlClientProvider>
-        <Toaster />
+        <LazyToaster />
       </body>
     </html>
   );

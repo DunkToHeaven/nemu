@@ -1,31 +1,14 @@
-"use client";
-
-import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { getTranslations } from "next-intl/server";
 import { Logo } from "@/components/brand";
 import { Icon, type IconName } from "@/components/icons";
-import { LoginCard } from "@/components/landing/login-card";
+import { LandingAuth } from "@/components/landing/landing-auth";
 import { LocaleToggle, ThemeToggle } from "@/components/theme-locale";
 import { Button } from "@/components/ui/button";
-import { api } from "@/lib/api/client";
-import { keys } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
 
-export function LandingView() {
-  const t = useTranslations("landing");
-  const tl = useTranslations("login");
-  const params = useSearchParams();
-
-  const { data: session } = useQuery({
-    queryKey: keys.session,
-    queryFn: () => api.auth.session(),
-    retry: false,
-    staleTime: 30_000,
-  });
-
-  const nextParam = params.get("next");
+export async function LandingView() {
+  const t = await getTranslations("landing");
 
   const features: { icon: IconName; title: string; body: string }[] = [
     { icon: "shieldCheck", title: t("featureLog"), body: t("featureLogBody") },
@@ -79,22 +62,7 @@ export function LandingView() {
         <div className="mx-auto grid max-w-[1200px] items-start gap-8 lg:grid-cols-[minmax(0,1fr)_430px] lg:gap-14">
           {/* Login lebih dulu di HP (order-1), konten pengenalan di bawahnya. */}
           <div className="order-1 lg:order-2 lg:pt-6">
-            {session ? (
-              <div className="rounded-[28px] border border-border bg-card/90 p-6 shadow-[var(--shadow-float)] backdrop-blur-xl">
-                <p className="text-sm text-muted-foreground">
-                  {tl("loggedInAs", { name: session.name })}
-                </p>
-                <h2 className="mt-1 text-2xl font-extrabold tracking-[-0.02em]">{tl("title")}</h2>
-                <Button asChild size="lg" block className="mt-4">
-                  <Link href={nextParam ? nextParam : "/app"}>
-                    {tl("openDashboard")}
-                    <Icon name="chevronRight" className="size-5" />
-                  </Link>
-                </Button>
-              </div>
-            ) : (
-              <LoginCard />
-            )}
+            <LandingAuth />
           </div>
 
           <section className="order-2 flex max-w-[660px] flex-col gap-6 lg:order-1 lg:pt-4">

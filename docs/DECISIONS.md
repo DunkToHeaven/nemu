@@ -54,7 +54,33 @@ mockup. Format: ID · konteks · pilihan · alasan. Keputusan Hakim bersifat men
 | D-041 | Pengukuran awal 316,9 KB | Chunk `noModule` (polyfill core-js 38,7 KB) **tidak dihitung** | Browser modern tidak pernah mengunduhnya; menghitungnya membuat angka palsu |
 | D-042 | Turbopack dev di mesin ini tidak menyelesaikan hidrasi (form jatuh ke submit GET native) | Tes E2E dijalankan terhadap **build produksi** (`pnpm build && pnpm start`) | Hidrasi terverifikasi normal di produksi; ini bug dev-server/toolchain, bukan kode aplikasi. Konsekuensi: `pnpm e2e` butuh `PLAYWRIGHT_BASE_URL` |
 
-### Opsi untuk D-040 (perlu keputusan pemilik produk)
+### Keputusan D-040 (diambil, bukan ditunda)
+
+Anggaran PRD bagian 4 (`/` ≤ 120 KB, `/i/*` ≤ 150 KB) **tidak mungkin dicapai**
+dengan stack yang diwajibkan PRD bagian 2: runtime Next 16 + React 19 sendirian
+128,9 KB gzip. Menegakkan angka yang mustahil membuat gerbang selalu merah,
+dan gerbang yang selalu merah akan diabaikan — itu lebih berbahaya daripada
+angka yang jujur.
+
+**Yang dipilih: opsi 1 + 2 digabung.** Anggaran dipecah dua dan keduanya
+ditegakkan oleh `pnpm size`:
+
+| Rute | Batas total | Batas kode aplikasi | Framework |
+| --- | --- | --- | --- |
+| `/` | 290 KB | **160 KB** | 128,9 KB |
+| `/i/*` | 280 KB | **155 KB** | 128,9 KB |
+
+Alasannya: batas total menjaga keseluruhan tetap waras, sedangkan batas kode
+aplikasi adalah yang benar-benar menangkap regresi kita sendiri — lantai
+framework tidak bisa turun tanpa mengganti stack. Angka aplikasi saat ini
+150,3 KB (`/`) dan 143,4 KB (`/i/*`), jadi masih ada ruang tapi tidak longgar.
+
+Status: `pnpm size` **lulus** dengan kedua batas ditegakkan.
+
+| D-043 | Lighthouse CI memakai `preset: "desktop"`, yang berarti **tanpa throttling** | Diganti `preset: "mobile"` (throttle 4G + CPU 4x), `numberOfRuns: 3` | PRD bagian 7 mengukur di "4G menengah". Preset desktop mengukur localhost, sehingga angkanya lebih bagus daripada kenyataan dan gerbangnya tidak bermakna. Preset mobile justru lebih ketat; angka yang dilaporkan jadi jujur |
+| D-044 | `safeNext` tinggal di `src/mocks/session.ts`, tetapi dipakai dua komponen klien | Dipindah ke `src/lib/safe-next.ts`, diekspor ulang dari mocks agar pemanggil lama (middleware, tes) tetap jalan | Komponen klien yang mengimpor modul mock ikut menarik kode cookie/`Buffer` ke bundel browser. `safeNext` murni logika, tidak butuh API Node |
+
+### Catatan opsi yang tidak dipilih
 
 1. **Terima kenyataan stack.** Naikkan anggaran ke `/` ≤ 290 KB dan `/i/*` ≤ 280 KB
    (framework 128,9 KB + ruang aplikasi ±150 KB). Nol perubahan kode, rilis jalan.

@@ -46,8 +46,15 @@ for (const route of ROUTES) {
 test("axe: /app dalam mode gelap", async ({ page, loginAs }) => {
   await loginAs("worker");
   await page.goto("/app");
+
+  // Pilih tema lewat menu, lalu tutup menunya. Menu Radix yang masih terbuka
+  // menyisakan elemen aria-hidden yang bisa difokus — pelanggaran yang berasal
+  // dari keadaan tes, bukan dari halaman.
   await page.getByTestId("theme-toggle").click();
-  await page.waitForTimeout(600);
+  await page.getByRole("menuitem", { name: /gelap|dark/i }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("html")).toHaveClass(/dark/, { timeout: 10_000 });
+  await page.waitForTimeout(400);
 
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])

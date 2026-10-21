@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { safeNext } from "@/mocks/session";
+import { safeNext } from "@/lib/safe-next";
 
 export function SessionExpiredDialog() {
   const t = useTranslations("login");

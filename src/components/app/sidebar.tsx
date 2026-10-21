@@ -77,7 +77,7 @@ export function Sidebar({ role }: { role: Role }) {
         <button
           type="button"
           onClick={() => setCollapsed((value) => !value)}
-          aria-label={collapsed ? "Perluas sidebar" : "Ciutkan sidebar"}
+          aria-label={`${t("nav.more")} — ${collapsed ? t("common.expandSidebar") : t("common.collapseSidebar")}`}
           className={cn(
             "flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
             collapsed && "justify-center px-0",

@@ -85,15 +85,29 @@ test.describe("alur inti pekerja", () => {
 
   test("pengambilan tercatat dan muncul di konfirmasi", async ({ page, loginAs }) => {
     await loginAs("worker");
-    const response = await page.request.get("/api/v1/items/search?q=a&limit=8");
-    const payload = (await response.json()) as {
-      data: { item: { code: string }; totalQty: number }[];
-    };
-    const candidate = payload.data.find((row) => row.totalQty > 2);
-    expect(candidate).toBeTruthy();
-    if (!candidate) return;
+    // Pilih item yang berstok di rak UTAMANYA. `totalQty` menjumlahkan semua
+    // rak, jadi item bisa tampak berstok padahal rak yang terpilih kosong.
+    const response = await page.request.get("/api/v1/items/search?q=a&limit=20");
+    const payload = (await response.json()) as { data: { item: { code: string } }[] };
+    let code: string | null = null;
+    for (const row of payload.data) {
+      const detail = await page.request.get(`/api/v1/items/by-code/${row.item.code}`);
+      if (!detail.ok()) continue;
+      const body = (await detail.json()) as {
+        item: { primaryLocationId: string | null };
+        stock: { locationId: string; qty: number }[];
+      };
+      const primary = body.stock.find((level) => level.locationId === body.item.primaryLocationId);
+      const level = primary ?? body.stock[0];
+      if (level && level.qty > 2) {
+        code = row.item.code;
+        break;
+      }
+    }
+    expect(code).toBeTruthy();
+    if (!code) return;
 
-    await page.goto(`/i/${candidate.item.code}`);
+    await page.goto(`/i/${code}`);
     await page.getByTestId("reason-select").click();
     await page.getByRole("option").first().click();
 

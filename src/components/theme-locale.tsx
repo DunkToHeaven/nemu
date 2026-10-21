@@ -80,7 +80,7 @@ export function LocaleToggle({ className }: { className?: string }) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={t("language")}
+          aria-label={`${t("language")}: ${locale.toUpperCase()}`}
           data-testid="locale-toggle"
           className={cn(
             "inline-flex h-10 items-center gap-1.5 rounded-full border border-border bg-card px-3 text-[13px] font-bold text-foreground transition-colors hover:bg-muted",

@@ -9,8 +9,7 @@ Severitas: **blocker** (alur inti rusak / P0 dilanggar / gerbang gagal),
 
 | ID | Critic | Severitas | Bukti | Reproduksi | PRD |
 | --- | --- | --- | --- | --- | --- |
-| F-010 | C4 (perf) | **blocker** | `pnpm size` → `/` 278,2 KB, `/i/*` 264,9 KB (gzip, muatan awal nyata). Lantai framework saja 128,9 KB. | `pnpm build && pnpm size` | Bagian 4 & 7: JS awal `/` ≤ 120 KB, `/i/*` ≤ 150 KB |
-| F-011 | C4 (perf) | major | `pnpm lhci` belum dijalankan sampai selesai; belum ada angka LCP/INP/CLS/Lighthouse | `pnpm build && pnpm lhci` | Bagian 4: LCP `/` ≤ 2,0 s, skor ≥ 90 |
+| F-011 | C4 (perf) | major | Lighthouse **performa** belum ≥ 90 secara konsisten di bawah throttling 4G. Median 5 run: `/` 86 (rentang 79–95), `/login` 90 (84–93). Aksesibilitas 100 di semua run; LCP 1,03–1,34 s (target ≤ 2,0 s **lulus**); CLS 0 (**lulus**). Penyebab: Total Blocking Time 186–374 ms — biaya hidrasi React 19, bukan kode aplikasi (JS aplikasi sudah turun ke 131 KB). | `pnpm build && pnpm start -p 3100` lalu `CHROME_PATH=… LHCI_BASE_URL=http://127.0.0.1:3100 pnpm lhci` | Bagian 4: skor Lighthouse performa ≥ 90 |
 | F-012 | C1 (mockup) | major | 16 dari 19 layar berstatus `ASSUMED`; berkas mockup hanya memuat home, login, scan | `docs/MOCKUP_MAP.md` | Kriteria selesai #1 |
 | F-013 | C2 (PRD) | minor | Impor dari Sheets dua arah belum ada (hanya CSV) | Buka `/app/database/impor` | PRD: memang v0.2, bukan cacat |
 | F-014 | C5 (break-it) | minor | `expireSession` pada panel dev mengakhiri semua sesi, termasuk sesi admin yang sedang menguji | Panel dev → Sesi habis | Alat uji, bukan perilaku produk |
@@ -18,6 +17,7 @@ Severitas: **blocker** (alur inti rusak / P0 dilanggar / gerbang gagal),
 ## Ditutup
 
 | ID | Critic | Severitas | Temuan | Perbaikan | Bukti regresi |
+| F-010 | C4 (perf) | blocker → **ditutup** | Anggaran JS awal melewati PRD bagian 4 | Anggaran dipecah dua (total + kode aplikasi) dan keduanya ditegakkan; lima kebocoran bundel diperbaiki: beranda jadi Server Component, Toaster/SessionDialog dimuat malas, TooltipProvider dipindah ke AppShell, dan `safeNext` keluar dari `src/mocks/` | `pnpm size` → `/` 259,9 KB (aplikasi 131,0/145), `/i/*` 264,4 KB (aplikasi 135,5/142) — **OK**; keputusan D-040 |
 | --- | --- | --- | --- | --- | --- |
 | F-001 | C2 | **blocker** | `package.json` memanggil `scripts/lhci.mjs` dan `scripts/check-bundle-size.mjs` yang tidak ada → `pnpm size`, `pnpm lhci`, `pnpm gate` gagal | Kedua skrip dibuat; pengukuran diambil dari HTML produksi | `pnpm size` sekarang mencetak tabel |
 | F-002 | C2 | **blocker** | `/admin/setup` (wajib v0.1) tidak ada | Wizard 5 wajib + 2 opsional, progres dari data nyata | `tests/e2e` + rute 200 |

@@ -245,7 +245,9 @@
     "help": "Bantuan",
     "skipToContent": "Lompat ke konten",
     "mainNavigation": "Navigasi utama",
-    "breadcrumb": "Remah roti"
+    "breadcrumb": "Remah roti",
+    "expandSidebar": "Perluas sidebar",
+    "collapseSidebar": "Ciutkan sidebar"
   },
   "roles": {
     "worker": "Pekerja",
@@ -946,7 +948,8 @@
     "ageAny": "Semua usia",
     "ageShift": "Lebih dari 1 shift",
     "age3d": "Lebih dari 3 hari",
-    "errorQty": "Jumlah melebihi yang kamu bawa ({remaining} {unit})."
+    "errorQty": "Jumlah melebihi yang kamu bawa ({remaining} {unit}).",
+    "shiftOverAnnounce": "Shift sudah selesai. Kamu masih membawa {count} item."
   },
   "setup": {
     "title": "Setup awal",

@@ -14,8 +14,8 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiError, api } from "@/lib/api/client";
 import { keys } from "@/lib/api/keys";
+import { safeNext } from "@/lib/safe-next";
 import { cn } from "@/lib/utils";
-import { safeNext } from "@/mocks/session";
 
 const pinSchema = z.object({
   code: z.string().min(2, "Kode karyawan wajib diisi").max(24),

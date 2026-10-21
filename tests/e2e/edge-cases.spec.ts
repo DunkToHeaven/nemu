@@ -21,6 +21,33 @@ async function searchRows(page: import("@playwright/test").Page): Promise<Search
   return payload.data;
 }
 
+/**
+ * Ambil item yang benar-benar bisa diambil **di lokasi utamanya**.
+ *
+ * `totalQty` menjumlahkan semua rak, jadi item bisa terlihat berstok padahal
+ * rak yang otomatis terpilih di form kosong ("Habis") dan tombol Ambil memang
+ * nonaktif. Tes harus memilih berdasarkan stok per lokasi, bukan total.
+ */
+async function pickableItem(page: import("@playwright/test").Page) {
+  const rows = await searchRows(page);
+  for (const row of rows) {
+    const detail = await page.request.get(`/api/v1/items/by-code/${row.item.code}`);
+    if (!detail.ok()) continue;
+    const payload = (await detail.json()) as {
+      item: { primaryLocationId: string | null };
+      stock: { locationId: string; qty: number }[];
+    };
+    const primary = payload.stock.find(
+      (level) => level.locationId === payload.item.primaryLocationId,
+    );
+    const level = primary ?? payload.stock[0];
+    if (level && level.qty > 2) {
+      return { code: row.item.code, qty: level.qty };
+    }
+  }
+  return null;
+}
+
 test.describe("kasus tepi", () => {
   test("stok 0 memberi penjelasan, bukan tombol mati tanpa sebab", async ({ page, loginAs }) => {
     await loginAs("worker");
@@ -40,11 +67,11 @@ test.describe("kasus tepi", () => {
 
   test("qty negatif ditolak sebelum dikirim", async ({ page, loginAs }) => {
     await loginAs("worker");
-    const row = (await searchRows(page)).find((entry) => entry.totalQty > 2);
-    test.skip(!row, "tidak ada item berstok");
+    const row = await pickableItem(page);
+    test.skip(!row, "tidak ada item berstok di rak utamanya");
     if (!row) return;
 
-    await page.goto(`/i/${row.item.code}`);
+    await page.goto(`/i/${row.code}`);
     await page.getByTestId("qty-input").fill("-5");
     await page.getByTestId("submit-take").click();
     await expect(page.getByTestId("take-error")).toBeVisible();
@@ -53,12 +80,12 @@ test.describe("kasus tepi", () => {
 
   test("qty melebihi stok ditolak di klien", async ({ page, loginAs }) => {
     await loginAs("worker");
-    const row = (await searchRows(page)).find((entry) => entry.totalQty > 2);
-    test.skip(!row, "tidak ada item berstok");
+    const row = await pickableItem(page);
+    test.skip(!row, "tidak ada item berstok di rak utamanya");
     if (!row) return;
 
-    await page.goto(`/i/${row.item.code}`);
-    await page.getByTestId("qty-input").fill(String(row.totalQty + 500));
+    await page.goto(`/i/${row.code}`);
+    await page.getByTestId("qty-input").fill(String(row.qty + 500));
     await page.getByTestId("submit-take").click();
     await expect(page.getByTestId("take-error")).toBeVisible();
     await expect(page.getByTestId("take-confirmation")).toHaveCount(0);
@@ -77,10 +104,10 @@ test.describe("kasus tepi", () => {
 
   test("sesi habis saat mengisi form mempertahankan draf", async ({ page, loginAs }) => {
     await loginAs("worker");
-    const row = (await searchRows(page)).find((entry) => entry.totalQty > 2);
-    test.skip(!row, "tidak ada item berstok");
+    const row = await pickableItem(page);
+    test.skip(!row, "tidak ada item berstok di rak utamanya");
     if (!row) return;
-    const url = `/i/${row.item.code}`;
+    const url = `/i/${row.code}`;
 
     await page.goto(url);
     await page.getByTestId("qty-input").fill("3");
@@ -195,11 +222,11 @@ test.describe("kasus tepi", () => {
 
   test("tombol Batalkan pada konfirmasi mencatat pembalik", async ({ page, loginAs }) => {
     await loginAs("worker");
-    const row = (await searchRows(page)).find((entry) => entry.totalQty > 2);
-    test.skip(!row, "tidak ada item berstok");
+    const row = await pickableItem(page);
+    test.skip(!row, "tidak ada item berstok di rak utamanya");
     if (!row) return;
 
-    await page.goto(`/i/${row.item.code}`);
+    await page.goto(`/i/${row.code}`);
     await page.getByTestId("reason-select").click();
     await page.getByRole("option").first().click();
     const wo = page.getByTestId("wo-input");

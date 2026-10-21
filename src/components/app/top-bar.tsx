@@ -63,7 +63,6 @@ export function TopBar() {
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
-            aria-label={t("palette.placeholder")}
             data-testid="palette-trigger"
             className="hidden h-10 min-w-56 items-center gap-2 rounded-full border border-border bg-card px-3.5 text-left text-[13px] text-muted-foreground transition-colors hover:bg-muted md:flex"
           >
@@ -91,7 +90,7 @@ export function TopBar() {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                aria-label={t("common.profile")}
+                aria-label={`${initials} — ${t("common.profile")}`}
                 data-testid="user-menu"
                 className="grid size-10 shrink-0 place-items-center rounded-full bg-primary-soft text-[13px] font-extrabold text-primary-soft-foreground"
               >

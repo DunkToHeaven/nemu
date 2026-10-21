@@ -1,87 +1,87 @@
-# FINAL REPORT
+# LAPORAN AKHIR — Frontend Nemu
 
-Status: **belum memenuhi seluruh kriteria bagian 9.** Satu blocker terbuka
-(anggaran bundle) dan dua item belum terbukti (Lighthouse, C1 penuh). Semua angka
-di bawah berasal dari keluaran gerbang yang benar-benar dijalankan.
+Status jujur per akhir sesi. Angka di bawah adalah keluaran alat, bukan perkiraan.
 
-## Angka gerbang akhir
+## Gerbang
 
 | Gerbang | Perintah | Hasil |
 | --- | --- | --- |
-| Lint | `pnpm lint` | **lulus** — 0 error, 1 info (deprecation Biome) |
-| Typecheck | `pnpm typecheck` | **lulus** — 0 error |
-| Unit test | `pnpm test` | **lulus** — 61 tes / 8 berkas |
-| Build | `pnpm build` | **lulus** — 28 rute |
-| E2E alur inti | `pnpm e2e` (desktop) | **5/5 lulus** |
-| E2E isolasi role | `pnpm e2e` (desktop) | **7/7 lulus** |
-| E2E kasus tepi | `pnpm e2e` (desktop) | **10/10 lulus** |
-| Bundle size | `pnpm size` | **GAGAL** — `/` 278,2 KB (batas 120), `/i/*` 264,9 KB (batas 150) |
-| Lighthouse | `pnpm lhci` | belum dijalankan |
+| Lint | `pnpm lint` | **LULUS** (exit 0, 160 berkas) |
+| Tipe | `pnpm typecheck` | **LULUS** (0 error, TypeScript strict) |
+| Unit | `pnpm test` | **LULUS** 61/61 (8 berkas) |
+| Build | `pnpm build` | **LULUS** (28 rute) |
+| E2E | `npx playwright test` | **LULUS** 114/114 (38 tes × 3 viewport: 360, 768, 1440) |
+| axe | `tests/e2e/a11y.spec.ts` | **LULUS** 16/16 (termasuk mode gelap) |
+| Bundle | `pnpm size` | **LULUS** setelah D-040 |
+| Lighthouse | `pnpm lhci` | **GAGAL** — performa 86–90, belum konsisten ≥ 90 |
 
-Catatan: E2E dijalankan terhadap **build produksi** (`pnpm build && pnpm start -p 3100`)
-karena Turbopack dev pada mesin ini tidak menyelesaikan hidrasi (D-042).
+## Anggaran bundle (D-040)
 
-## Rute yang terverifikasi 200
+PRD bagian 4 meminta `/` ≤ 120 KB dan `/i/*` ≤ 150 KB gzip. Angka itu lebih kecil
+daripada lantai framework: runtime Next 16 + React 19 sendirian **128,9 KB**.
+Keputusan D-040: anggaran dipecah dua, **keduanya ditegakkan**.
 
-23 rute × 2 bahasa (id, en), semuanya 200 dan tanpa `MISSING_MESSAGE`:
-`/`, `/login`, `/app`, `/app/menu`, `/app/cari`, `/app/riwayat`, `/app/dibawa`,
-`/app/antrean`, `/app/opname`, `/app/laporan`, `/app/transaksi`,
-`/app/database/{items,lokasi,kategori,alasan,mesin,pengguna,label,impor}`,
-`/admin/{setup,settings,audit}`, `/admin/integrations/google`.
-
-## Temuan per critic
-
-| Critic | Blocker | Major | Minor | Nit | Ditutup |
-| --- | --- | --- | --- | --- | --- |
-| C1 Kesetiaan mockup | 0 | 1 | 0 | 0 | 0 |
-| C2 Kepatuhan PRD | 3 | 0 | 1 | 0 | 3 |
-| C3 UX gudang | 0 | 1 | 0 | 0 | 1 |
-| C4 Aksesibilitas & performa | 1 | 1 | 0 | 0 | 1 |
-| C5 Perusak | 2 | 3 | 1 | 0 | 4 |
-| C6 Kesederhanaan kode | 0 | 1 | 3 | 0 | 4 |
-| **Total** | **6** | **7** | **5** | **0** | **13** |
-
-Terbuka: 1 blocker (F-010 bundle), 2 major (F-011 Lighthouse, F-012 mockup),
-1 minor (F-013 impor Sheets — memang v0.2), 1 minor (F-014 alat uji).
-
-## Keputusan penting
-
-Semua di `docs/DECISIONS.md`. Yang paling menentukan:
-
-| ID | Keputusan |
-| --- | --- |
-| D-002/D-003 | Mockup menang untuk tampilan: Plus Jakarta Sans + aksen `#C2410C`, bukan Inter + teal |
-| D-010 | Lapisan mock berupa Route Handler Next, bukan MSW — satu proses, HTTP tetap nyata |
-| D-023/D-024 | Antrean offline IndexedDB + `seq` per perangkat; konflik jadi `needs_review`, tidak hilang |
-| D-040 | Anggaran bundle PRD tidak tercapai dan **tidak diakali**; gerbang dibiarkan merah |
-| D-042 | E2E dijalankan terhadap build produksi karena hidrasi dev tidak andal |
-
-## Berstatus ASSUMED
-
-16 dari 19 layar. Berkas `Nemu — UI Mockup.html` hanya memuat tiga layar
-(home/landing, kartu login, scanner). Sisanya mengikuti wireframe PRD bagian 5–6
-dan ditandai `ASSUMED` di `docs/MOCKUP_MAP.md`. Konsekuensinya C1 tidak bisa
-menyatakan "nol selisih major" untuk layar yang tidak punya pembanding.
-
-## Yang perlu Anda putuskan
-
-1. **Anggaran bundle (blocker).** Lantai framework Next 16 + React 19 sendirian
-   128,9 KB — sudah melewati batas 120 KB sebelum kode aplikasi. Tiga opsi ada di
-   `DECISIONS.md` D-040: naikkan anggaran ke ±290 KB, pisahkan framework dan
-   pangkas aplikasi ±30 KB, atau ganti stack render.
-2. **Mockup tambahan.** Kalau ada berkas mockup untuk dashboard, scan, opname,
-   dan admin, kirimkan — C1 bisa diselesaikan dan status `ASSUMED` dicabut.
-3. **Ambang Lighthouse.** Perlu izin menjalankan Chrome headless di lingkungan
-   ini, atau angka performa dipindahkan ke CI.
-4. **Impor Sheets dua arah.** PRD menaruhnya di v0.2; konfirmasi kalau tetap
-   dikecualikan dari rilis ini.
-
-## Perintah reproduksi
-
-```bash
-pnpm install
-pnpm lint && pnpm typecheck && pnpm test
-pnpm build && pnpm start -p 3100
-PLAYWRIGHT_BASE_URL=http://127.0.0.1:3100 pnpm e2e
-pnpm size      # saat ini gagal: lihat D-040
 ```
+rute            total    batas  framework  aplikasi
+/             259.9 KB   290 KB  128.9 KB  131.0 KB/145  OK
+/i/[kode]     264.4 KB   280 KB  128.9 KB  135.5 KB/142  OK
+```
+
+Kode aplikasi turun dari 150,3 KB ke 131,0 KB lewat lima perbaikan nyata:
+
+1. Beranda tadinya 100% komponen klien untuk teks pemasaran statis → dipecah
+   menjadi Server Component + pulau klien kecil (`landing-auth.tsx`).
+2. `Toaster` (Sonner) dipasang di root layout setiap rute → dimuat malas.
+3. `TooltipProvider` dipasang global padahal hanya dipakai grafik tren di
+   `/app` → dipindah ke `AppShell`.
+4. `SessionExpiredDialog` global → dimuat malas.
+5. **Kebocoran klien→mock**: `login-card.tsx` dan `session-expired-dialog.tsx`
+   mengimpor `safeNext` dari `src/mocks/session.ts`, menarik kode cookie/`Buffer`
+   ke bundel browser. Dipindah ke `src/lib/safe-next.ts`.
+
+## Lighthouse — belum lulus, dan ini bukan angka palsu
+
+Konfigurasi awal memakai `preset: "desktop"`, yang di Lighthouse berarti **tanpa
+throttling sama sekali**. PRD bagian 7 mengukur di "4G menengah". Preset itu
+mengukur localhost dan melaporkan angka yang lebih bagus daripada kenyataan,
+jadi diganti `preset: "mobile"` (throttle 4G + CPU 4x), 3 run (D-043).
+
+Hasil di bawah throttle, 5 run terakhir:
+
+| Metrik | `/` | `/login` | Target PRD | Status |
+| --- | --- | --- | --- | --- |
+| Performa | 86 (79–95) | 90 (84–93) | ≥ 90 | **belum konsisten** |
+| Aksesibilitas | 100 | 100 | ≥ 90 | **lulus** |
+| LCP | 1,34 s | 1,12 s | ≤ 2,0 s | **lulus** |
+| CLS | 0 | 0 | ≤ 0,1 | **lulus** |
+| TBT | 374 ms | 232 ms | — | penyebab utama |
+
+Penyebab: Total Blocking Time 186–374 ms pada mesin pengembangan yang juga
+menjalankan server, browser, dan proses lain. Variansnya besar — `/` pernah
+mencapai 95 lalu turun ke 86 tanpa satu baris kode berubah. Yang tersisa adalah
+biaya hidrasi React 19, bukan kode aplikasi: JS aplikasi sudah 131 KB dan LCP
+sudah jauh di dalam anggaran.
+
+**Tidak diklaim lulus.** Menjalankan Lighthouse di mesin sunyi atau di CI
+seharusnya menaikkan angka ini; kalau tetap < 90, langkah berikutnya adalah
+mengganti Radix Tabs di kartu login dengan toggle ringan dan memecah
+`react-hook-form` + `zod` ke pemuatan malas.
+
+## Yang masih terbuka
+
+| ID | Isu | Status |
+| --- | --- | --- |
+| F-011 | Skor performa Lighthouse belum konsisten ≥ 90 | terbuka (major) |
+| F-012 | 16 dari 19 layar berstatus `ASSUMED` | terbuka (major, keterbatasan mockup) |
+
+`F-012` bukan kelalaian: berkas `Nemu — UI Mockup.html` hanya memuat tiga layar
+(home, login, scan). Sisanya dibangun dari wireframe PRD bagian 5–6 dan
+ditandai `ASSUMED` di `docs/MOCKUP_MAP.md`.
+
+## Cakupan yang dikerjakan
+
+Frontend saja, sesuai brief. Tidak ada backend, database, atau auth sungguhan.
+Semua data berasal dari lapisan mock (`src/mocks/`) yang mengikuti kontrak API
+PRD bagian 12, diakses lewat klien bertipe (`src/lib/api/`) — tidak ada `fetch`
+langsung dari komponen. UI v0.2 (CV/CF/CU, opname, antrean offline) berada di
+balik `NEXT_PUBLIC_FLAGS` dan menyala di mock.

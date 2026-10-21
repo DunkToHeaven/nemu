@@ -22,6 +22,7 @@ import { keys } from "@/lib/api/keys";
 import { flags } from "@/lib/flags";
 import { formatQty } from "@/lib/format";
 import type { CustodyEntry } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const DISMISS_KEY = "nemu:custody-reminder-dismissed";
 
@@ -56,12 +57,21 @@ export function CustodyReminder() {
 
   const entries = data?.data ?? [];
 
+  /**
+   * Pengingat akhir shift (CU-05) TIDAK membuka sheet otomatis.
+   *
+   * Sheet adalah modal: Radix menandai seluruh halaman di luarnya `aria-hidden`
+   * dan mengunci fokus, sehingga dashboard, sidebar, dan tab bar menjadi tidak
+   * bisa dipakai maupun dibaca pembaca layar. Itu merusak alur utama — pekerja
+   * membuka dashboard lalu langsung terkurung dialog.
+   *
+   * Gantinya: tombol mengambang (sudah ada) diberi penekanan saat shift selesai,
+   * plus pengumuman `aria-live="polite"` supaya pembaca layar tetap tahu.
+   */
+  const [shiftOver, setShiftOver] = React.useState(false);
   React.useEffect(() => {
     if (!enabled || entries.length === 0) return;
-    if (!shiftEnded(user?.shiftEndsAt ?? null)) return;
-    const dismissed = sessionStorage.getItem(DISMISS_KEY);
-    if (dismissed === "1") return;
-    setOpen(true);
+    setShiftOver(shiftEnded(user?.shiftEndsAt ?? null));
   }, [enabled, entries.length, user?.shiftEndsAt]);
 
   if (!enabled || entries.length === 0) return null;
@@ -76,12 +86,23 @@ export function CustodyReminder() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-24 right-3 z-30 flex items-center gap-2 rounded-full bg-warning px-3.5 py-2.5 text-2xs font-bold text-white shadow-[var(--shadow-card)] sm:bottom-20"
+        className={cn(
+          "fixed bottom-24 right-3 z-30 flex items-center gap-2 rounded-full px-3.5 py-2.5 text-2xs font-bold shadow-[var(--shadow-card)] sm:bottom-20",
+          // Kontras AA: isian terang + teks gelap. Isian --warning solid tidak
+          // pernah lolos 4.5:1 untuk teks 11px di kedua tema.
+          shiftOver
+            ? "bg-warning-soft text-warning-foreground ring-2 ring-warning"
+            : "bg-card text-warning-foreground ring-1 ring-border",
+        )}
         data-testid="custody-reminder-trigger"
       >
         <Icon name="package" className="size-4" />
         {t("reminderTitle", { count: entries.length })}
       </button>
+
+      <p aria-live="polite" className="sr-only">
+        {shiftOver ? t("shiftOverAnnounce", { count: entries.length }) : ""}
+      </p>
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="bottom" className="sm:max-w-lg sm:rounded-3xl sm:pb-6">

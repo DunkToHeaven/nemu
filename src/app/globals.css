@@ -41,6 +41,7 @@
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
   --color-warning-foreground: var(--warning-foreground);
+  --color-on-warning: var(--on-warning);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-danger-foreground: var(--danger-foreground);
@@ -99,6 +100,8 @@
   --warning: oklch(0.56 0.13 65);
   --warning-soft: oklch(0.966 0.045 85);
   --warning-foreground: oklch(0.47 0.11 62);
+  /* Teks di atas isian --warning solid: harus gelap agar lolos AA. */
+  --on-warning: oklch(0.24 0.06 62);
   --danger: oklch(0.545 0.196 27.5);
   --danger-soft: oklch(0.96 0.032 27);
   --danger-foreground: oklch(0.47 0.17 27);
@@ -138,6 +141,7 @@
   --warning: oklch(0.81 0.14 80);
   --warning-soft: oklch(0.32 0.055 80);
   --warning-foreground: oklch(0.88 0.11 85);
+  --on-warning: oklch(0.24 0.06 62);
   --danger: oklch(0.72 0.17 27);
   --danger-soft: oklch(0.32 0.07 27);
   --danger-foreground: oklch(0.86 0.11 27);

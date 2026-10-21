@@ -72,7 +72,9 @@
     "help": "Help",
     "skipToContent": "Skip to content",
     "mainNavigation": "Main navigation",
-    "breadcrumb": "Breadcrumb"
+    "breadcrumb": "Breadcrumb",
+    "expandSidebar": "Expand sidebar",
+    "collapseSidebar": "Collapse sidebar"
   },
   "roles": {
     "worker": "Worker",
@@ -455,7 +457,8 @@
     "ageAny": "Any age",
     "ageShift": "Over one shift",
     "age3d": "Over 3 days",
-    "errorQty": "Quantity exceeds what you carry ({remaining} {unit})."
+    "errorQty": "Quantity exceeds what you carry ({remaining} {unit}).",
+    "shiftOverAnnounce": "Shift has ended. You are still carrying {count} items."
   },
   "scan": {
     "title": "Scan QR",
