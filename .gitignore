@@ -14,3 +14,4 @@ docs/*.png
 # log lokal
 server*.log
 e2e-*.log
+tunnel.log
