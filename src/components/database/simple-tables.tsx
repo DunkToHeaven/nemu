@@ -58,11 +58,13 @@ export function CategoriesTable() {
               className="h-11"
             />
             <Button
-              className="h-11 shrink-0"
+              className="h-11 shrink-0 gap-1.5"
+              data-testid="add-category"
               onClick={() => addCategory.mutate()}
               disabled={name.trim().length < 2 || addCategory.isPending}
             >
               <Icon name="plus" className="size-4" />
+              {t("addShort")}
             </Button>
           </div>
         ) : null}
@@ -236,11 +238,13 @@ export function EquipmentTable() {
             className="h-11 flex-1"
           />
           <Button
-            className="h-11"
+            className="h-11 gap-1.5"
+            data-testid="add-equipment"
             disabled={!code.trim() || !name.trim() || add.isPending}
             onClick={() => add.mutate()}
           >
             <Icon name="plus" className="size-4" />
+            {t("addShort")}
           </Button>
         </div>
       ) : null}

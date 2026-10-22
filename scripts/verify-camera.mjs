@@ -10,7 +10,8 @@
 import { chromium } from "@playwright/test";
 
 const BASE = process.env.BASE ?? "https://control-lunch-stevens-matthew.trycloudflare.com";
-const secure = BASE.startsWith("https://") || BASE.includes("localhost") || BASE.includes("127.0.0.1");
+const secure =
+  BASE.startsWith("https://") || BASE.includes("localhost") || BASE.includes("127.0.0.1");
 
 let pass = 0;
 let fail = 0;
@@ -41,12 +42,14 @@ await page.goto(`${BASE}/scan`, { waitUntil: "load" });
 await page.waitForTimeout(4000);
 
 const video = page.locator("video");
-const srcOk = await video.evaluate((el) => {
-  const stream = el.srcObject;
-  if (!stream) return false;
-  const tracks = stream.getVideoTracks();
-  return tracks.length > 0 && tracks[0].readyState === "live";
-}).catch(() => false);
+const srcOk = await video
+  .evaluate((el) => {
+    const stream = el.srcObject;
+    if (!stream) return false;
+    const tracks = stream.getVideoTracks();
+    return tracks.length > 0 && tracks[0].readyState === "live";
+  })
+  .catch(() => false);
 
 const body = await page.locator("body").innerText();
 const saysHttps = /HTTPS/i.test(body);

@@ -747,7 +747,10 @@
     "requiredField": "Required.",
     "qty": "Qty",
     "cancel": "Cancel",
-    "newItemHint": "The QR code is generated automatically."
+    "newItemHint": "The QR code is generated automatically.",
+    "addShort": "Add",
+    "newLocationHint": "Locations follow the hierarchy: warehouse › zone › rack › bin.",
+    "noParent": "— no parent —"
   },
   "labels": {
     "title": "QR labels",
@@ -819,7 +822,8 @@
     "exportStock": "Export stock (CSV)",
     "exportDone": "Export ready to download.",
     "preview": "Preview",
-    "templateDownloaded": "Excel template downloaded."
+    "templateDownloaded": "Excel template downloaded.",
+    "entityCategories": "Categories"
   },
   "admin": {
     "settingsTitle": "Settings",

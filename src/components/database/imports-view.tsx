@@ -21,9 +21,11 @@ export function ImportsView() {
   const t = useTranslations("imports");
   const locale = useLocale();
   const queryClient = useQueryClient();
-  const [entity, setEntity] = React.useState<"items" | "locations" | "users" | "equipment">(
-    "items",
-  );
+  // Hanya entitas yang punya penanganan di `applyImport` (POST /imports/:id/apply).
+  // Sebelumnya pemilih menampilkan lokasi/pengguna/mesin juga, padahal memilih
+  // entitas itu lalu menekan "Terapkan" tidak melakukan apa pun — backend hanya
+  // mengenal `items` dan `categories`.
+  const [entity, setEntity] = React.useState<"items" | "categories">("items");
   const [filename, setFilename] = React.useState("import.csv");
   const [raw, setRaw] = React.useState("");
   const [job, setJob] = React.useState<ImportJobRow | null>(null);
@@ -89,7 +91,7 @@ export function ImportsView() {
   return (
     <div className="mx-auto max-w-3xl space-y-3">
       <div className="flex flex-wrap gap-1.5">
-        {(["items", "locations", "users", "equipment"] as const).map((value) => (
+        {(["items", "categories"] as const).map((value) => (
           <button
             key={value}
             type="button"
@@ -100,13 +102,7 @@ export function ImportsView() {
                 : "min-h-9 rounded-full border border-border bg-card px-3.5 text-[13px] font-bold text-muted-foreground hover:bg-muted"
             }
           >
-            {value === "items"
-              ? t("entityItems")
-              : value === "locations"
-                ? t("entityLocations")
-                : value === "users"
-                  ? t("entityUsers")
-                  : t("entityEquipment")}
+            {value === "items" ? t("entityItems") : t("entityCategories")}
           </button>
         ))}
       </div>

@@ -35,6 +35,39 @@ export function LocationsTable() {
     queryFn: () => api.master.locations({ q: debounced || undefined }),
   });
 
+  // Form tambah lokasi. Sebelumnya tab Lokasi sama sekali tidak punya tombol
+  // tambah — pengguna hanya bisa menonaktifkan lokasi yang sudah ada.
+  const [newOpen, setNewOpen] = React.useState(false);
+  const [form, setForm] = React.useState({
+    name: "",
+    code: "",
+    type: "rack" as LocationRow["type"],
+    parentId: "",
+  });
+
+  const all = useQuery({
+    queryKey: keys.locations({ q: "" }),
+    queryFn: () => api.master.locations({}),
+  });
+
+  const create = useMutation({
+    mutationFn: () =>
+      api.admin.createLocation({
+        name: form.name.trim(),
+        code: form.code.trim(),
+        type: form.type,
+        parentId: form.parentId || null,
+        active: true,
+      }),
+    onSuccess: () => {
+      toast.success(t("saved"));
+      void queryClient.invalidateQueries({ queryKey: ["locations"] });
+      setForm({ name: "", code: "", type: "rack", parentId: "" });
+      setNewOpen(false);
+    },
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : "Gagal menyimpan."),
+  });
+
   const toggle = useMutation({
     mutationFn: (row: LocationRow) => api.admin.updateLocation(row.id, { active: !row.active }),
     onSuccess: (result) => {
@@ -51,18 +84,93 @@ export function LocationsTable() {
 
   return (
     <div className="space-y-3">
-      <div className="relative">
-        <Icon
-          name="search"
-          className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-        />
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={t("searchPlaceholder")}
-          className="h-11 pl-10"
-        />
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Icon
+            name="search"
+            className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t("searchPlaceholder")}
+            className="h-11 pl-10"
+          />
+        </div>
+        {isAdmin ? (
+          <Button
+            className="h-11 shrink-0 gap-1.5"
+            data-testid="add-location"
+            onClick={() => setNewOpen((value) => !value)}
+          >
+            <Icon name="plus" className="size-4" />
+            {t("newLocation")}
+          </Button>
+        ) : null}
       </div>
+
+      {newOpen && isAdmin ? (
+        <section className="space-y-2 rounded-2xl border border-border bg-card p-4">
+          <p className="text-2xs text-muted-foreground">{t("newLocationHint")}</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Input
+              value={form.name}
+              data-testid="new-location-name"
+              onChange={(event) => setForm({ ...form, name: event.target.value })}
+              placeholder={t("nameLabel")}
+              className="h-11"
+            />
+            <Input
+              value={form.code}
+              data-testid="new-location-code"
+              onChange={(event) => setForm({ ...form, code: event.target.value })}
+              placeholder={t("codeLabel")}
+              className="h-11"
+            />
+            <select
+              value={form.type}
+              data-testid="new-location-type"
+              onChange={(event) =>
+                setForm({ ...form, type: event.target.value as LocationRow["type"] })
+              }
+              className="h-11 rounded-xl border border-border bg-card px-3 text-[13px] font-semibold"
+            >
+              <option value="warehouse">{t("typeWarehouse")}</option>
+              <option value="zone">{t("typeZone")}</option>
+              <option value="rack">{t("typeRack")}</option>
+              <option value="bin">{t("typeBin")}</option>
+            </select>
+            <select
+              value={form.parentId}
+              data-testid="new-location-parent"
+              onChange={(event) => setForm({ ...form, parentId: event.target.value })}
+              className="h-11 rounded-xl border border-border bg-card px-3 text-[13px] font-semibold"
+            >
+              <option value="">{t("noParent")}</option>
+              {(all.data?.data ?? []).map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.path}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button
+            className="h-11 gap-1.5"
+            data-testid="save-location"
+            disabled={
+              form.name.trim().length < 2 || form.code.trim().length < 1 || create.isPending
+            }
+            onClick={() => create.mutate()}
+          >
+            {create.isPending ? (
+              <Icon name="spinner" className="size-4 animate-spin" />
+            ) : (
+              <Icon name="check" className="size-4" />
+            )}
+            {t("save")}
+          </Button>
+        </section>
+      ) : null}
 
       {rows.length === 0 ? (
         <EmptyState icon="boxes" title={t("empty")} body={t("emptyBody")} />

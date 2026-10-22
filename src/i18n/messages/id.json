@@ -36,7 +36,8 @@
     "exportStock": "Ekspor stok (CSV)",
     "exportDone": "Ekspor siap diunduh.",
     "preview": "Pratinjau",
-    "templateDownloaded": "Template Excel terunduh."
+    "templateDownloaded": "Template Excel terunduh.",
+    "entityCategories": "Kategori"
   },
   "admin": {
     "settingsTitle": "Pengaturan",
@@ -487,7 +488,10 @@
     "requiredField": "Wajib diisi.",
     "qty": "Qty",
     "cancel": "Batal",
-    "newItemHint": "Kode QR dibuat otomatis oleh sistem."
+    "newItemHint": "Kode QR dibuat otomatis oleh sistem.",
+    "addShort": "Tambah",
+    "newLocationHint": "Lokasi mengikuti hierarki: gudang › zona › rak › bin.",
+    "noParent": "— tanpa induk —"
   },
   "labels": {
     "title": "Label QR",
