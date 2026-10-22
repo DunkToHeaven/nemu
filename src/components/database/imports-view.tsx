@@ -21,11 +21,11 @@ export function ImportsView() {
   const t = useTranslations("imports");
   const locale = useLocale();
   const queryClient = useQueryClient();
-  // Hanya entitas yang punya penanganan di `applyImport` (POST /imports/:id/apply).
-  // Sebelumnya pemilih menampilkan lokasi/pengguna/mesin juga, padahal memilih
-  // entitas itu lalu menekan "Terapkan" tidak melakukan apa pun — backend hanya
-  // mengenal `items` dan `categories`.
-  const [entity, setEntity] = React.useState<"items" | "categories">("items");
+  // Impor hanya untuk item. Pemilih entitas dihapus atas permintaan pengguna:
+  // memilih "Kategori" lalu menekan Terapkan membingungkan karena halaman ini
+  // memang untuk mengimpor barang. Kategori tetap dibuat otomatis dari kolom
+  // `category` pada berkas item.
+  const entity = "items" as const;
   const [filename, setFilename] = React.useState("import.csv");
   const [raw, setRaw] = React.useState("");
   const [job, setJob] = React.useState<ImportJobRow | null>(null);
@@ -90,23 +90,6 @@ export function ImportsView() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-3">
-      <div className="flex flex-wrap gap-1.5">
-        {(["items", "categories"] as const).map((value) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setEntity(value)}
-            className={
-              entity === value
-                ? "min-h-9 rounded-full border border-primary bg-primary px-3.5 text-[13px] font-bold text-primary-foreground"
-                : "min-h-9 rounded-full border border-border bg-card px-3.5 text-[13px] font-bold text-muted-foreground hover:bg-muted"
-            }
-          >
-            {value === "items" ? t("entityItems") : t("entityCategories")}
-          </button>
-        ))}
-      </div>
-
       <section className="space-y-2 rounded-2xl border border-dashed border-border bg-card p-4">
         <div className="flex items-center gap-2">
           <Icon name="upload" className="size-5 text-muted-foreground" />
@@ -270,6 +253,23 @@ export function ImportsView() {
             ))}
           </ul>
         )}
+      </section>
+
+      {/* Ekspor master data: satu berkas Excel berisi semua jenis data. */}
+      <section className="space-y-2 rounded-2xl border border-border bg-card p-4">
+        <div className="flex items-center gap-2">
+          <Icon name="download" className="size-5 text-muted-foreground" />
+          <div className="flex-1">
+            <p className="text-sm font-bold">{t("exportTitle")}</p>
+            <p className="text-2xs text-muted-foreground">{t("exportBody")}</p>
+          </div>
+        </div>
+        <Button size="sm" variant="ghost" asChild data-testid="export-master">
+          <a href="/api/v1/export" download>
+            <Icon name="download" className="size-4" />
+            {t("exportTitle")}
+          </a>
+        </Button>
       </section>
 
       <p className="sr-only">

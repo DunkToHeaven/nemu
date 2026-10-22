@@ -267,7 +267,7 @@ async function main() {
       g.json?.integration?.connected === false,
   );
 
-  console.log("\n" + "-".repeat(50));
+  console.log(`\n${"-".repeat(50)}`);
   console.log(`  lulus ${pass} · gagal ${fail}`);
   process.exit(fail === 0 ? 0 : 1);
 }

@@ -87,7 +87,9 @@
     "offline": "Offline",
     "liveHint": "Data updates instantly",
     "connectingHint": "Reconnecting to the server",
-    "offlineHint": "Changes are not sent. They wait in the device queue."
+    "offlineHint": "Changes are not sent. They wait in the device queue.",
+    "polling": "Connected",
+    "pollingHint": "Data refreshes periodically. Real-time updates are unavailable on this network."
   },
   "confidence": {
     "high": "High",
@@ -823,7 +825,8 @@
     "exportDone": "Export ready to download.",
     "preview": "Preview",
     "templateDownloaded": "Excel template downloaded.",
-    "entityCategories": "Categories"
+    "entityCategories": "Categories",
+    "exportBody": "Download all master data as a single Excel file (one sheet per type)."
   },
   "admin": {
     "settingsTitle": "Settings",

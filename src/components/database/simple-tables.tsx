@@ -60,8 +60,17 @@ export function CategoriesTable() {
             <Button
               className="h-11 shrink-0 gap-1.5"
               data-testid="add-category"
-              onClick={() => addCategory.mutate()}
-              disabled={name.trim().length < 2 || addCategory.isPending}
+              // Tombol TIDAK di-disable saat isian kosong: tombol mati tanpa
+              // penjelasan terasa seperti aplikasi rusak. Klik selalu diterima,
+              // lalu divalidasi dengan pesan yang menyebut apa yang kurang.
+              onClick={() => {
+                if (name.trim().length < 2) {
+                  toast.error(t("requiredField"));
+                  return;
+                }
+                addCategory.mutate();
+              }}
+              disabled={addCategory.isPending}
             >
               <Icon name="plus" className="size-4" />
               {t("addShort")}
@@ -144,9 +153,14 @@ export function ReasonsTable() {
             {t("requiresWoLabel")}
           </label>
           <Button
-            className="h-11"
-            disabled={name.trim().length < 2 || upsert.isPending}
-            onClick={() =>
+            className="h-11 gap-1.5"
+            data-testid="add-reason"
+            disabled={upsert.isPending}
+            onClick={() => {
+              if (name.trim().length < 2) {
+                toast.error(t("requiredField"));
+                return;
+              }
               upsert.mutate(
                 { body: { name: name.trim(), requiresWo, active: true } },
                 {
@@ -155,8 +169,8 @@ export function ReasonsTable() {
                     setRequiresWo(false);
                   },
                 },
-              )
-            }
+              );
+            }}
           >
             <Icon name="plus" className="size-4" />
             {t("newReason")}
@@ -240,8 +254,14 @@ export function EquipmentTable() {
           <Button
             className="h-11 gap-1.5"
             data-testid="add-equipment"
-            disabled={!code.trim() || !name.trim() || add.isPending}
-            onClick={() => add.mutate()}
+            disabled={add.isPending}
+            onClick={() => {
+              if (!code.trim() || !name.trim()) {
+                toast.error(t("requiredField"));
+                return;
+              }
+              add.mutate();
+            }}
           >
             <Icon name="plus" className="size-4" />
             {t("addShort")}
@@ -337,9 +357,16 @@ export function UsersTable() {
               <option value="admin">admin</option>
             </select>
             <Button
-              className="h-11"
-              disabled={!name.trim() || !code.trim() || create.isPending}
-              onClick={() => create.mutate()}
+              className="h-11 gap-1.5"
+              data-testid="add-user"
+              disabled={create.isPending}
+              onClick={() => {
+                if (!name.trim() || !code.trim()) {
+                  toast.error(t("requiredField"));
+                  return;
+                }
+                create.mutate();
+              }}
             >
               <Icon name="plus" className="size-4" />
               {t("newUser")}

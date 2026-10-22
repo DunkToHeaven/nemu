@@ -7,7 +7,7 @@ import { Icon } from "@/components/icons";
 import type { LiveEvent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-type State = "live" | "connecting" | "offline";
+type State = "live" | "connecting" | "polling" | "offline";
 
 const EVENT_INVALIDATION: Record<LiveEvent["type"], string[]> = {
   "stock.changed": ["dashboard", "item", "search", "stock", "reports", "transactions"],
@@ -27,6 +27,7 @@ export function ConnectionStatus({ className }: { className?: string }) {
   React.useEffect(() => {
     let source: EventSource | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let readyTimer: ReturnType<typeof setTimeout> | null = null;
     let closed = false;
 
     const connect = () => {
@@ -34,12 +35,17 @@ export function ConnectionStatus({ className }: { className?: string }) {
       setState((prev) => (prev === "offline" ? "connecting" : prev));
       source = new EventSource("/api/v1/stream");
 
-      source.addEventListener("ready", () => setState("live"));
+      source.addEventListener("ready", () => {
+        if (readyTimer) clearTimeout(readyTimer);
+        setState("live");
+      });
 
       const handler = (event: MessageEvent<string>) => {
         try {
           const payload = JSON.parse(event.data) as LiveEvent;
           setLastEventAt(Date.now());
+          if (readyTimer) clearTimeout(readyTimer);
+          setState("live");
           const keys = EVENT_INVALIDATION[payload.type] ?? [];
           for (const key of keys) {
             void queryClient.invalidateQueries({ queryKey: [key] });
@@ -53,23 +59,54 @@ export function ConnectionStatus({ className }: { className?: string }) {
         source.addEventListener(type, handler as EventListener);
       }
 
+      /**
+       * Batas waktu handshake.
+       *
+       * Lewat tunnel/proxy (Cloudflare, nginx dengan buffering) stream SSE bisa
+       * terbuka tanpa pernah mengirim event `ready`. Sebelumnya badge berputar
+       * "Menyambung" selamanya walaupun data sebenarnya normal. Setelah 6 detik
+       * tanpa handshake, status diturunkan ke "polling": aplikasi tetap hidup
+       * dan menyegarkan data berkala, hanya tanpa pembaruan real-time.
+       */
+      readyTimer = setTimeout(() => {
+        setState((prev) => (prev === "live" ? prev : "polling"));
+      }, 6000);
+
       source.onerror = () => {
         source?.close();
         source = null;
-        setState("offline");
+        if (readyTimer) clearTimeout(readyTimer);
+        // Jangan langsung bilang "Offline": coba lagi dulu. Offline hanya bila
+        // perangkat memang tidak punya jaringan.
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          setState("offline");
+        } else {
+          setState("polling");
+        }
         if (retryTimer) clearTimeout(retryTimer);
         retryTimer = setTimeout(() => {
-          setState("connecting");
+          setState((prev) => (prev === "offline" ? "connecting" : prev));
           connect();
-        }, 4000);
+        }, 8000);
       };
     };
 
     connect();
 
+    const onOffline = () => setState("offline");
+    const onOnline = () => {
+      setState("connecting");
+      connect();
+    };
+    window.addEventListener("offline", onOffline);
+    window.addEventListener("online", onOnline);
+
     return () => {
       closed = true;
       if (retryTimer) clearTimeout(retryTimer);
+      if (readyTimer) clearTimeout(readyTimer);
+      window.removeEventListener("offline", onOffline);
+      window.removeEventListener("online", onOnline);
       source?.close();
     };
   }, [queryClient]);
@@ -77,6 +114,13 @@ export function ConnectionStatus({ className }: { className?: string }) {
   // Cadangan polling 15 detik (RT-01).
   React.useEffect(() => {
     const timer = setInterval(() => {
+      // Saat "polling" tidak ada event masuk, jadi data disegarkan berkala
+      // supaya dashboard tetap akurat tanpa real-time.
+      if (state === "polling") {
+        void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+        void queryClient.invalidateQueries({ queryKey: ["events"] });
+        return;
+      }
       if (state === "live" && Date.now() - (lastEventAt ?? 0) > 15_000) {
         void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       }
@@ -85,7 +129,7 @@ export function ConnectionStatus({ className }: { className?: string }) {
   }, [queryClient, state, lastEventAt]);
 
   const label = t(state);
-  const hint = t(`${state}Hint` as "liveHint" | "connectingHint" | "offlineHint");
+  const hint = t(`${state}Hint` as "liveHint" | "connectingHint" | "pollingHint" | "offlineHint");
 
   return (
     <span
@@ -97,7 +141,8 @@ export function ConnectionStatus({ className }: { className?: string }) {
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-2xs font-bold",
         state === "live" && "border-transparent bg-success-soft text-success-foreground",
-        state === "connecting" && "border-transparent bg-warning-soft text-warning-foreground",
+        (state === "connecting" || state === "polling") &&
+          "border-transparent bg-warning-soft text-warning-foreground",
         state === "offline" && "border-transparent bg-danger-soft text-danger-foreground",
         className,
       )}
@@ -109,6 +154,8 @@ export function ConnectionStatus({ className }: { className?: string }) {
         </span>
       ) : state === "connecting" ? (
         <Icon name="spinner" className="size-3 animate-spin" />
+      ) : state === "polling" ? (
+        <Icon name="refresh" className="size-3" />
       ) : (
         <Icon name="wifiOff" className="size-3" />
       )}

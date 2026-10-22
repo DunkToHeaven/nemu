@@ -54,7 +54,11 @@ for (const [name, path, testId] of TABS) {
   const labelled = buttons.map((b) => b.trim()).filter((b) => b.length > 2);
   // Tombol tambah dikenali dari label yang menyebut tambah/baru.
   const addBtn = labelled.find((b) => /tambah|baru|add|new/i.test(b));
-  check(`${name}: ada tombol tambah berlabel`, Boolean(addBtn), addBtn ?? `hanya ${labelled.slice(0, 4).join(", ")}`);
+  check(
+    `${name}: ada tombol tambah berlabel`,
+    Boolean(addBtn),
+    addBtn ?? `hanya ${labelled.slice(0, 4).join(", ")}`,
+  );
   if (testId) {
     const byTest = await page.getByTestId(testId).count();
     check(`${name}: tombol teridentifikasi`, byTest > 0, `testid ${testId}=${byTest}`);
@@ -76,16 +80,17 @@ check("lokasi baru tersimpan dan tampil", locBody.includes(`UJI-${suffix}`), `UJ
 console.log("\n== 3. PEMILIH ENTITAS IMPOR ==");
 await page.goto(`${BASE}/app/database/impor`, { waitUntil: "load" });
 await page.waitForTimeout(1500);
-const importBody = await page.locator("body").innerText();
 const pills = await page.locator("button").allInnerTexts();
 const pillText = pills.map((p) => p.trim());
-check("ada pilihan Item", pillText.some((p) => /^Item/i.test(p)));
-check("ada pilihan Kategori", pillText.some((p) => /^Kategori/i.test(p)));
+// Pemilih entitas dihapus: halaman impor hanya untuk item.
+check("tidak ada pilihan Item", !pillText.some((p) => /^Item$/i.test(p)));
+check("tidak ada pilihan Kategori", !pillText.some((p) => /^Kategori$/i.test(p)));
+check("ada menu ekspor master data", (await page.getByTestId("export-master").count()) > 0);
 check("tidak ada pilihan Lokasi", !pillText.some((p) => /^Lokasi$/i.test(p)));
 check("tidak ada pilihan Pengguna", !pillText.some((p) => /^Pengguna$/i.test(p)));
 check("tidak ada pilihan Mesin/aset", !pillText.some((p) => /^Mesin/i.test(p)));
 
 await browser.close();
-console.log("\n" + "-".repeat(50));
+console.log(`\n${"-".repeat(50)}`);
 console.log(`  lulus ${pass} · gagal ${fail}`);
 process.exit(fail === 0 ? 0 : 1);

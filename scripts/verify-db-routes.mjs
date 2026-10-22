@@ -58,7 +58,7 @@ async function main() {
   let bad = 0;
   let mockFallback = 0;
   console.log("\n  rute                                          status  sumber");
-  console.log("  " + "-".repeat(66));
+  console.log(`  ${"-".repeat(66)}`);
 
   for (const [method, path, who, body] of ROUTES) {
     const cookie = who === "any" ? "" : cookies[who];
@@ -78,7 +78,7 @@ async function main() {
     console.log(`  ${path.padEnd(42)} ${String(res.status).padStart(4)}    ${source}${flag}`);
   }
 
-  console.log("  " + "-".repeat(66));
+  console.log(`  ${"-".repeat(66)}`);
   console.log(`  rute masih mock: ${mockFallback}`);
   console.log(`  rute error 5xx : ${bad}`);
   console.log(

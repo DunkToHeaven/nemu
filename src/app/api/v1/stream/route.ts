@@ -69,6 +69,10 @@ export async function GET(request: Request): Promise<Response> {
       };
 
       controller.enqueue(encoder.encode("retry: 3000\n\n"));
+      // Padding 2 KB: proxy (Cloudflare, nginx) menahan respons sampai buffer
+      // penuh. Tanpa ini stream terbuka tetapi event `ready` tidak pernah
+      // sampai ke browser, sehingga badge status berputar selamanya.
+      controller.enqueue(encoder.encode(`: ${" ".repeat(2048)}\n\n`));
       controller.enqueue(encoder.encode('event: ready\ndata: {"ok":true}\n\n'));
 
       unsubscribe = subscribe(send);

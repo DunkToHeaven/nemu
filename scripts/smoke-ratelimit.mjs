@@ -60,7 +60,7 @@ async function main() {
   const wrong = await tryLogin("ADM01", "0000");
   check("PIN salah ditolak 401", wrong.status === 401, `status ${wrong.status}`);
 
-  console.log("\n" + "-".repeat(48));
+  console.log(`\n${"-".repeat(48)}`);
   console.log(`  lulus ${pass} · gagal ${fail}`);
   process.exit(fail === 0 ? 0 : 1);
 }

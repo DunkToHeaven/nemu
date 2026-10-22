@@ -66,6 +66,6 @@ if (secure) {
 }
 
 await browser.close();
-console.log("\n" + "-".repeat(48));
+console.log(`\n${"-".repeat(48)}`);
 console.log(`  lulus ${pass} · gagal ${fail}`);
 process.exit(fail === 0 ? 0 : 1);

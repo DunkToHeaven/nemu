@@ -37,7 +37,8 @@
     "exportDone": "Ekspor siap diunduh.",
     "preview": "Pratinjau",
     "templateDownloaded": "Template Excel terunduh.",
-    "entityCategories": "Kategori"
+    "entityCategories": "Kategori",
+    "exportBody": "Unduh seluruh master data sebagai satu berkas Excel (satu lembar per jenis)."
   },
   "admin": {
     "settingsTitle": "Pengaturan",
@@ -262,7 +263,9 @@
     "offline": "Offline",
     "liveHint": "Data diperbarui langsung",
     "connectingHint": "Menyambung ulang ke server",
-    "offlineHint": "Perubahan tidak terkirim. Antrean disimpan di perangkat."
+    "offlineHint": "Perubahan tidak terkirim. Antrean disimpan di perangkat.",
+    "polling": "Tersambung",
+    "pollingHint": "Data disegarkan berkala. Pembaruan real-time tidak tersedia di jaringan ini."
   },
   "confidence": {
     "high": "Tinggi",

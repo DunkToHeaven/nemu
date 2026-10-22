@@ -94,6 +94,6 @@ const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 
 await browser.close();
-console.log("\n" + "-".repeat(50));
+console.log(`\n${"-".repeat(50)}`);
 console.log(`  lulus ${pass} · gagal ${fail}`);
 process.exit(fail === 0 ? 0 : 1);
