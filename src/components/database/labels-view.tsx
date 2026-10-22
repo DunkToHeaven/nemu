@@ -87,7 +87,9 @@ export function LabelsView() {
     return () => {
       cancelled = true;
     };
-  }, [rows, qrsRef]);
+    // qrsRef stabil (useRef), sengaja tidak masuk dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
 
   const chosen = rows.filter((row) => selected.has(row.id));
 

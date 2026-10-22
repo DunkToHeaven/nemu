@@ -16,7 +16,10 @@
     "e2e": "playwright test",
     "lhci": "node scripts/lhci.mjs",
     "size": "node scripts/check-bundle-size.mjs",
-    "gate": "pnpm lint && pnpm typecheck && pnpm test && pnpm e2e && pnpm size"
+    "gate": "pnpm lint && pnpm typecheck && pnpm test && pnpm e2e && pnpm size",
+    "db:migrate": "node scripts/db.mjs migrate",
+    "db:seed": "node scripts/db.mjs seed",
+    "db:reset": "node scripts/db.mjs reset"
   },
   "dependencies": {
     "@hookform/resolvers": "^6.0.0",
@@ -43,6 +46,7 @@
     "next-intl": "^4.14.9",
     "next-themes": "^0.4.6",
     "pdf-lib": "^1.17.1",
+    "postgres": "^3.4.9",
     "qrcode": "^1.5.4",
     "react": "19.3.1",
     "react-dom": "19.3.1",
@@ -69,6 +73,7 @@
     "jsdom": "^30.1.3",
     "postcss": "^8.5.31",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^5.0.5",
