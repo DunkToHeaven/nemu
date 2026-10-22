@@ -1,0 +1,518 @@
+/**
+ * Admin: pengaturan, integrasi Google, impor, audit trail, dan sync offline.
+ */
+import { z } from "zod";
+import type { AuthUser } from "@/server/auth";
+import { sql } from "@/server/db";
+import { audit } from "@/server/handlers/master";
+import { errors, ok, parseBody, requireRole, requireSession } from "@/server/http";
+import { issueStock, moveStock } from "@/server/services/stock";
+
+/* ----------------------------------------------------------- pengaturan */
+
+export async function getSettings(): Promise<Response> {
+  await requireRole("admin");
+  const rows = await sql<
+    {
+      org_name: string;
+      timezone: string;
+      locale: string;
+      shift_ends_at: string;
+      min_stock_default: number;
+      verify_quota_per_shift: number;
+      verify_min_score: number;
+      confidence_high: number;
+      confidence_medium: number;
+      custody_enabled: boolean;
+      notify_telegram: boolean;
+      notify_email: boolean;
+    }[]
+  >`
+    SELECT org_name, timezone, locale, shift_ends_at, min_stock_default,
+           verify_quota_per_shift, verify_min_score, confidence_high, confidence_medium,
+           custody_enabled, notify_telegram, notify_email
+    FROM settings WHERE id
+  `;
+  const s = rows[0];
+  if (!s) throw errors.notFound("Pengaturan");
+
+  return ok({
+    settings: {
+      orgName: s.org_name,
+      timezone: s.timezone,
+      locale: s.locale,
+      shiftEndsAt: [s.shift_ends_at],
+      verifyPromptEnabled: s.verify_quota_per_shift > 0,
+      verifyMaxPerShift: s.verify_quota_per_shift,
+      verifyCountThreshold: s.verify_min_score,
+      verifyPMin: s.confidence_medium,
+      verifyPMax: s.confidence_high,
+      confidenceDecayDays: 30,
+      custodyEnabled: s.custody_enabled,
+      custodyOverdueHours: 24,
+      defaultMinStock: s.min_stock_default,
+      blindEveryN: 5,
+      notifications: { telegram: s.notify_telegram, email: s.notify_email },
+      branding: { accent: "#C2410C", logoText: "Nemu" },
+    },
+  });
+}
+
+const settingsPatch = z.object({
+  orgName: z.string().trim().min(1).max(120).optional(),
+  timezone: z.string().max(64).optional(),
+  locale: z.enum(["id", "en"]).optional(),
+  shiftEndsAt: z.array(z.string()).optional(),
+  verifyPromptEnabled: z.boolean().optional(),
+  verifyMaxPerShift: z.number().int().min(0).max(100).optional(),
+  verifyCountThreshold: z.number().int().min(0).max(100).optional(),
+  confidenceDecayDays: z.number().int().min(1).max(365).optional(),
+  custodyEnabled: z.boolean().optional(),
+  custodyOverdueHours: z.number().int().min(1).max(720).optional(),
+  defaultMinStock: z.number().int().min(0).max(100_000).optional(),
+  notifications: z
+    .object({ telegram: z.boolean().optional(), email: z.boolean().optional() })
+    .optional(),
+});
+
+export async function updateSettings(request: Request, user: AuthUser): Promise<Response> {
+  await requireRole("admin");
+  const body = await parseBody(request, settingsPatch);
+
+  const cur = await sql<{ org_name: string; timezone: string; locale: string }[]>`
+    SELECT org_name, timezone, locale FROM settings WHERE id
+  `;
+  const c = cur[0];
+  if (!c) throw errors.notFound("Pengaturan");
+
+  await sql`
+    UPDATE settings SET
+      org_name = ${body.orgName ?? c.org_name},
+      timezone = ${body.timezone ?? c.timezone},
+      locale = ${body.locale ?? c.locale},
+      shift_ends_at = ${body.shiftEndsAt?.[0] ?? "16:00"},
+      verify_quota_per_shift = ${body.verifyMaxPerShift ?? 10},
+      verify_min_score = ${body.verifyCountThreshold ?? 55},
+      custody_enabled = ${body.custodyEnabled ?? true},
+      min_stock_default = ${body.defaultMinStock ?? 0},
+      notify_telegram = ${body.notifications?.telegram ?? false},
+      notify_email = ${body.notifications?.email ?? false},
+      updated_at = now()
+    WHERE id
+  `;
+
+  await audit(user.id, "settings", "org", "update", c, body);
+  return getSettings();
+}
+
+/* ------------------------------------------------------ integrasi Google */
+
+export async function getGoogle(): Promise<Response> {
+  await requireRole("admin");
+  const rows = await sql<
+    {
+      connected: boolean;
+      account_email: string | null;
+      folder_name: string | null;
+      spreadsheet_id: string | null;
+      spreadsheet_url: string | null;
+      schema_version: number;
+      app_schema_version: number;
+      check_status: string;
+      check_message: string | null;
+      protected_ranges: number;
+      scopes: string[];
+      last_sync_at: Date | null;
+    }[]
+  >`
+    SELECT connected, account_email, folder_name, spreadsheet_id, spreadsheet_url,
+           schema_version, app_schema_version, check_status, check_message,
+           protected_ranges, scopes, last_sync_at
+    FROM google_integration WHERE id
+  `;
+  const g = rows[0];
+  const runs = await sql<
+    {
+      id: string;
+      action: string;
+      status: string;
+      rows_sent: number;
+      started_at: Date;
+      finished_at: Date | null;
+      message: string | null;
+    }[]
+  >`SELECT id, action, status::text AS status, rows_sent, started_at, finished_at, message
+      FROM sync_runs ORDER BY started_at DESC LIMIT 20`;
+
+  return ok({
+    integration: {
+      connected: g?.connected ?? false,
+      accountEmail: g?.account_email ?? null,
+      folderName: g?.folder_name ?? null,
+      spreadsheetId: g?.spreadsheet_id ?? null,
+      spreadsheetUrl: g?.spreadsheet_url ?? null,
+      schemaVersion: String(g?.schema_version ?? 1),
+      appSchemaVersion: String(g?.app_schema_version ?? 1),
+      lastSyncAt: g?.last_sync_at ? g.last_sync_at.toISOString() : null,
+      scopes: g?.scopes ?? [],
+      protectedRanges: g?.protected_ranges ?? 0,
+      checkStatus: (g?.check_status ?? "unknown") as "ok" | "warning" | "error" | "unknown",
+      checkMessage: g?.check_message ?? null,
+      runs: runs.map((r) => ({
+        id: r.id,
+        direction: r.action,
+        status: r.status,
+        rows: r.rows_sent,
+        startedAt: r.started_at.toISOString(),
+        finishedAt: r.finished_at ? r.finished_at.toISOString() : null,
+        message: r.message,
+      })),
+    },
+  });
+}
+
+/**
+ * Operasi integrasi Google.
+ *
+ * PENTING: ini masih SIMULASI. Tidak ada panggilan ke Google API dan tidak ada
+ * OAuth sungguhan — kredensial Google belum dikonfigurasi. Statusnya ditandai
+ * jelas di pesan supaya tidak dikira sudah tersambung nyata.
+ */
+export async function googleAction(action: string, user: AuthUser): Promise<Response> {
+  await requireRole("admin");
+  const runId = `run_${crypto.randomUUID().slice(0, 8)}`;
+
+  if (action === "connect") {
+    await sql`
+      UPDATE google_integration SET
+        connected = true, account_email = 'gudang@nemu.local',
+        folder_name = 'Nemu - ' || (SELECT org_name FROM settings WHERE id),
+        spreadsheet_id = 'simulated', spreadsheet_url = NULL,
+        check_status = 'warning',
+        check_message = 'SIMULASI: OAuth Google belum dikonfigurasi (GOOGLE_CLIENT_ID kosong). Tidak ada spreadsheet yang benar-benar dibuat.',
+        protected_ranges = 0, scopes = ARRAY['drive.file'], updated_at = now()
+      WHERE id
+    `;
+    await sql`INSERT INTO sync_runs (id, action, status, rows_sent, message, finished_at)
+      VALUES (${runId}, 'connect', 'sent', 0, 'simulasi', now())`;
+    await audit(user.id, "integration", "google", "update", null, { connected: true });
+  } else if (action === "check") {
+    await sql`UPDATE google_integration SET check_status = 'warning',
+      check_message = 'SIMULASI: skema tidak diperiksa karena tidak ada spreadsheet nyata.',
+      updated_at = now() WHERE id`;
+    await sql`INSERT INTO sync_runs (id, action, status, rows_sent, message, finished_at)
+      VALUES (${runId}, 'check', 'sent', 0, 'simulasi', now())`;
+  } else if (action === "repair") {
+    await sql`UPDATE google_integration SET protected_ranges = 0, check_status = 'warning',
+      check_message = 'SIMULASI: tidak ada yang diperbaiki.', updated_at = now() WHERE id`;
+    await sql`INSERT INTO sync_runs (id, action, status, rows_sent, message, finished_at)
+      VALUES (${runId}, 'repair', 'sent', 0, 'simulasi', now())`;
+  } else if (action === "sync") {
+    // Outbox belum dikirim ke mana pun; hitung yang tertunda supaya angkanya jujur.
+    const pending = await sql<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM outbox WHERE status = 'pending'
+    `;
+    await sql`INSERT INTO sync_runs (id, action, status, rows_sent, message, finished_at)
+      VALUES (${runId}, 'sync', 'failed', 0,
+              ${`SIMULASI: ${pending[0]?.count ?? 0} baris tertunda, tidak dikirim (worker belum ada)`},
+              now())`;
+  } else if (action === "disconnect") {
+    await sql`UPDATE google_integration SET connected = false, token_ciphertext = NULL,
+      check_status = 'unknown', check_message = NULL, updated_at = now() WHERE id`;
+    await audit(user.id, "integration", "google", "update", null, { connected: false });
+  } else {
+    throw errors.badRequest(`Aksi tidak dikenal: ${action}`);
+  }
+
+  return getGoogle();
+}
+
+/* --------------------------------------------------------------- impor */
+
+export async function listImports(): Promise<Response> {
+  await requireRole("admin");
+  const rows = await sql<
+    { id: string; filename: string; status: string; summary: unknown; created_at: Date }[]
+  >`SELECT id, filename, status::text AS status, summary, created_at
+      FROM import_jobs ORDER BY created_at DESC LIMIT 50`;
+  return ok({
+    data: rows.map((r) => ({
+      id: r.id,
+      filename: r.filename,
+      status: r.status,
+      summary: r.summary,
+      createdAt: r.created_at.toISOString(),
+    })),
+  });
+}
+
+/**
+ * Pratinjau impor (dry-run). Belum menulis apa pun — hanya memvalidasi baris
+ * dan mengembalikan daftar ditolak beserta alasannya (PRD MD-03).
+ */
+export async function previewImport(request: Request, user: AuthUser): Promise<Response> {
+  await requireRole("admin");
+  const body = await parseBody(
+    request,
+    z.object({
+      entity: z.enum(["items", "locations", "categories"]),
+      filename: z.string().max(200),
+      rows: z.array(z.record(z.string(), z.string())).min(1).max(5000),
+    }),
+  );
+
+  const existingSkus = new Set(
+    (await sql<{ sku: string }[]>`SELECT sku FROM items`).map((r) => r.sku),
+  );
+  const existingCats = new Set(
+    (await sql<{ name: string }[]>`SELECT name FROM categories`).map((r) => r.name.toLowerCase()),
+  );
+
+  const rejected: { row: number; reason: string }[] = [];
+  const accepted: Record<string, string>[] = [];
+
+  body.rows.forEach((row, index) => {
+    const lineNo = index + 2; // baris 1 = header
+    if (body.entity === "items") {
+      const sku = (row.sku ?? "").trim();
+      const name = (row.name ?? "").trim();
+      if (!sku) return rejected.push({ row: lineNo, reason: "SKU kosong" });
+      if (!name) return rejected.push({ row: lineNo, reason: "Nama kosong" });
+      if (existingSkus.has(sku))
+        return rejected.push({ row: lineNo, reason: `SKU duplikat: ${sku}` });
+      existingSkus.add(sku);
+    }
+    if (body.entity === "categories") {
+      const name = (row.name ?? "").trim();
+      if (!name) return rejected.push({ row: lineNo, reason: "Nama kosong" });
+      if (existingCats.has(name.toLowerCase())) {
+        return rejected.push({ row: lineNo, reason: `Kategori sudah ada: ${name}` });
+      }
+      existingCats.add(name.toLowerCase());
+    }
+    accepted.push(row);
+  });
+
+  const id = `imp_${crypto.randomUUID().slice(0, 8)}`;
+  await sql`INSERT INTO import_jobs (id, filename, status, rows, summary, created_by)
+    VALUES (${id}, ${body.filename}, 'preview', ${sql.json(body.rows as never)},
+            ${sql.json({ entity: body.entity, accepted: accepted.length, rejected } as never)},
+            ${user.id})`;
+
+  return ok(
+    {
+      job: {
+        id,
+        filename: body.filename,
+        status: "preview",
+        createdAt: new Date().toISOString(),
+        summary: { entity: body.entity, accepted: accepted.length, rejected },
+      },
+    },
+    { status: 201 },
+  );
+}
+
+export async function applyImport(request: Request, id: string, user: AuthUser): Promise<Response> {
+  await requireRole("admin");
+  const rows = await sql<{ rows: Record<string, string>[]; summary: unknown; status: string }[]>`
+    SELECT rows, summary, status::text AS status FROM import_jobs WHERE id = ${id}
+  `;
+  const job = rows[0];
+  if (!job) throw errors.notFound("Impor");
+  if (job.status !== "preview") throw errors.conflict("IMPORT_DONE", "Impor sudah diterapkan.");
+
+  const summary = job.summary as { entity: string; rejected: { row: number }[] };
+  const rejectedRows = new Set((summary.rejected ?? []).map((r) => r.row));
+
+  let created = 0;
+  let updated = 0;
+
+  for (const [index, row] of job.rows.entries()) {
+    if (rejectedRows.has(index + 2)) continue;
+
+    if (summary.entity === "categories") {
+      const name = (row.name ?? "").trim();
+      if (!name) continue;
+      const newId = `cat_${crypto.randomUUID().slice(0, 8)}`;
+      await sql`INSERT INTO categories (id, name) VALUES (${newId}, ${name})
+        ON CONFLICT (name) DO NOTHING`;
+      created += 1;
+    } else if (summary.entity === "items") {
+      const sku = (row.sku ?? "").trim();
+      const name = (row.name ?? "").trim();
+      if (!sku || !name) continue;
+
+      const catName = (row.category ?? "Consumable").trim();
+      const catId = `cat_${catName.toLowerCase().replace(/\s+/g, "-")}`;
+      await sql`INSERT INTO categories (id, name) VALUES (${catId}, ${catName})
+        ON CONFLICT (name) DO NOTHING`;
+
+      const unitSymbol = (row.unit ?? "pcs").trim();
+      const unitRow = await sql<{ id: string }[]>`
+        SELECT id FROM units WHERE symbol = ${unitSymbol} LIMIT 1
+      `;
+      const unitId = unitRow[0]?.id ?? "un_pcs";
+
+      const existing = await sql<{ id: string }[]>`
+        SELECT id FROM items WHERE sku = ${sku}
+      `;
+      if (existing[0]) {
+        await sql`UPDATE items SET name = ${name}, category_id = ${catId},
+          min_stock = ${Number(row.minStock ?? 0) || 0}, updated_at = now()
+          WHERE id = ${existing[0].id}`;
+        updated += 1;
+      } else {
+        const code = Array.from(crypto.getRandomValues(new Uint8Array(9)))
+          .map((b) => "0123456789ABCDEFGHJKMNPQRSTVWXYZ"[b % 32])
+          .join("");
+        await sql`INSERT INTO items (id, sku, code, name, category_id, unit_id, min_stock)
+          VALUES (${`itm_${crypto.randomUUID().slice(0, 8)}`}, ${sku}, ${code}, ${name},
+                  ${catId}, ${unitId}, ${Number(row.minStock ?? 0) || 0})`;
+        created += 1;
+      }
+    }
+  }
+
+  await sql`UPDATE import_jobs SET status = 'applied', applied_at = now() WHERE id = ${id}`;
+  await audit(user.id, "import", id, "update", null, { created, updated });
+
+  return ok({ job: { id, status: "applied" }, created, updated });
+}
+
+/* ------------------------------------------------------ sync offline */
+
+export async function syncBatch(request: Request, user: AuthUser): Promise<Response> {
+  await requireSession();
+  const body = await parseBody(
+    request,
+    z.object({
+      transactions: z
+        .array(
+          z.object({
+            type: z.enum(["issue", "receive", "return", "transfer", "adjust"]),
+            itemId: z.string(),
+            locationId: z.string().optional(),
+            fromLocationId: z.string().nullable().optional(),
+            toLocationId: z.string().nullable().optional(),
+            qty: z.number().int().positive(),
+            idempotencyKey: z.string().min(8),
+            reasonId: z.string().nullable().optional(),
+            note: z.string().nullable().optional(),
+          }),
+        )
+        .min(1)
+        .max(200),
+    }),
+  );
+
+  // Antrean offline: hasil per item, satu gagal tidak membatalkan sisanya.
+  const results: {
+    idempotencyKey: string;
+    status: "ok" | "duplicate" | "needs_review" | "rejected";
+    message: string;
+    transactionId: string | null;
+  }[] = [];
+
+  for (const tx of body.transactions) {
+    try {
+      if (tx.type === "issue") {
+        const r = await issueStock(user, {
+          itemId: tx.itemId,
+          locationId: tx.locationId ?? tx.fromLocationId ?? "",
+          qty: tx.qty,
+          idempotencyKey: tx.idempotencyKey,
+          reasonId: tx.reasonId,
+          note: tx.note,
+        });
+        results.push(
+          r.ok
+            ? {
+                idempotencyKey: tx.idempotencyKey,
+                status: r.code === "duplicate" ? "duplicate" : "ok",
+                message: r.code === "duplicate" ? "sudah tercatat" : "tersimpan",
+                transactionId: r.txId,
+              }
+            : {
+                idempotencyKey: tx.idempotencyKey,
+                status: "rejected",
+                message: r.message,
+                transactionId: null,
+              },
+        );
+      } else {
+        const r = await moveStock(user, {
+          type: tx.type,
+          itemId: tx.itemId,
+          fromLocationId: tx.fromLocationId ?? null,
+          toLocationId: tx.toLocationId ?? null,
+          qty: tx.qty,
+          idempotencyKey: tx.idempotencyKey,
+          reasonId: tx.reasonId,
+          note: tx.note,
+        });
+        results.push(
+          r.ok
+            ? {
+                idempotencyKey: tx.idempotencyKey,
+                status: r.duplicate ? "duplicate" : "ok",
+                message: r.duplicate ? "sudah tercatat" : "tersimpan",
+                transactionId: r.txId,
+              }
+            : {
+                idempotencyKey: tx.idempotencyKey,
+                status: "rejected",
+                message: r.message,
+                transactionId: null,
+              },
+        );
+      }
+    } catch (error) {
+      results.push({
+        idempotencyKey: tx.idempotencyKey,
+        status: "rejected",
+        message: error instanceof Error ? error.message : "gagal",
+        transactionId: null,
+      });
+    }
+  }
+
+  return ok({
+    results,
+    ok: results.filter((r) => r.status === "ok").length,
+    duplicate: results.filter((r) => r.status === "duplicate").length,
+    needsReview: results.filter((r) => r.status === "needs_review").length,
+    rejected: results.filter((r) => r.status === "rejected").length,
+  });
+}
+
+/* --------------------------------------------------------------- event */
+
+export async function getEvents(): Promise<Response> {
+  await requireSession();
+  const rows = await sql<
+    {
+      id: string;
+      type: string;
+      item_id: string;
+      item_name: string;
+      qty: number;
+      created_at: Date;
+    }[]
+  >`
+    SELECT t.id, t.type::text AS type, t.item_id, i.name AS item_name, t.qty, t.created_at
+    FROM transactions t JOIN items i ON i.id = t.item_id
+    ORDER BY t.created_at DESC LIMIT 20
+  `;
+  return ok({
+    data: rows.map((r) => ({
+      id: r.id,
+      kind: "transaction",
+      type: r.type,
+      itemId: r.item_id,
+      itemName: r.item_name,
+      qty: r.qty,
+      at: r.created_at.toISOString(),
+    })),
+  });
+}

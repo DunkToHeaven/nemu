@@ -103,8 +103,8 @@ async function main() {
     );
     check(
       "saldo berkurang tepat 2",
-      issueBody.balance === before - 2,
-      `${before} -> ${issueBody.balance}`,
+      issueBody.stock?.qty === before - 2,
+      `${before} -> ${issueBody.stock?.qty}`,
     );
 
     // Kirim ulang dengan key sama: harus duplicate, bukan transaksi kedua.

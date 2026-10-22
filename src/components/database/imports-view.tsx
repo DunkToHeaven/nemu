@@ -167,16 +167,16 @@ export function ImportsView() {
             )}
             {t("preview")}
           </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              setRaw(SAMPLE);
-              setFilename("template.csv");
-            }}
-          >
-            <Icon name="download" className="size-4" />
-            {t("downloadTemplate")}
+          {/*
+            Tautan unduh sungguhan ke endpoint .xlsx. Sebelumnya tombol ini
+            hanya mengisi textarea dan mengganti nama berkas, sehingga tidak ada
+            berkas yang muncul di folder Download — terasa seperti tombol rusak.
+          */}
+          <Button size="sm" variant="ghost" asChild>
+            <a href={`/api/v1/imports/template?entity=${entity}`} download>
+              <Icon name="download" className="size-4" />
+              {t("downloadTemplate")}
+            </a>
           </Button>
         </div>
         <p className="text-2xs text-muted-foreground">{t("dryRunNote")}</p>

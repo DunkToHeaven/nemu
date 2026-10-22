@@ -8,6 +8,7 @@
  */
 import { z } from "zod";
 import { sql } from "@/server/db";
+import { loadCustody, loadStockLevel, loadTransaction } from "@/server/handlers/tx-shape";
 import { errors, ok, paginate, parseBody, requireSession } from "@/server/http";
 import { checkRateLimit, RATE_RULES } from "@/server/rate-limit";
 import { issueStock, moveStock, reverseTransaction } from "@/server/services/stock";
@@ -74,11 +75,34 @@ export async function createTransaction(request: Request): Promise<Response> {
 
     // Idempotency: kiriman ulang mengembalikan 200 dengan penanda duplicate,
     // bukan membuat transaksi kedua.
+    const tx = await loadTransaction(result.txId);
+    const stock = await loadStockLevel(body.itemId, body.locationId);
+
+    // Kustodi dibuka otomatis bila fitur aktif (PRD CU-01). Barang yang diambil
+    // berstatus "dibawa" sampai ditutup, supaya tidak hilang dari pengawasan.
+    let custody = null;
+    if (result.code !== "duplicate" && result.txId) {
+      custody = await openCustodyIfEnabled({
+        txId: result.txId,
+        userId: session.user.id,
+        itemId: body.itemId,
+        locationId: body.locationId,
+        qty: body.qty,
+        refNo: body.refNo ?? null,
+      });
+    }
+
     return ok(
       {
-        transaction: { id: result.txId },
+        transaction: tx,
         duplicate: result.code === "duplicate",
-        balance: result.balance,
+        stock,
+        custody,
+        verificationPrompt: null,
+        message:
+          result.code === "duplicate"
+            ? "Transaksi ini sudah tercatat sebelumnya."
+            : `${body.qty} diambil. Sisa ${result.balance ?? stock?.qty ?? 0}.`,
       },
       { status: result.code === "duplicate" ? 200 : 201 },
     );
@@ -112,9 +136,48 @@ export async function createTransaction(request: Request): Promise<Response> {
   }
 
   return ok(
-    { transaction: { id: result.txId }, duplicate: result.duplicate },
+    {
+      transaction: await loadTransaction(result.txId),
+      duplicate: result.duplicate,
+      stock: await loadStockLevel(body.itemId, body.toLocationId ?? body.fromLocationId ?? ""),
+      custody: null,
+      verificationPrompt: null,
+      message: result.duplicate ? "Transaksi ini sudah tercatat." : "Transaksi tersimpan.",
+    },
     { status: result.duplicate ? 200 : 201 },
   );
+}
+
+/**
+ * Buka entri kustodi untuk transaksi `issue` bila fitur aktif di pengaturan.
+ * Mengembalikan null bila fitur mati — bukan error, karena kustodi opsional.
+ */
+async function openCustodyIfEnabled(input: {
+  txId: string;
+  userId: string;
+  itemId: string;
+  locationId: string;
+  qty: number;
+  refNo: string | null;
+}) {
+  const enabled = await sql<{ custody_enabled: boolean }[]>`
+    SELECT custody_enabled FROM settings WHERE id
+  `;
+  if (!enabled[0]?.custody_enabled) return null;
+
+  const id = `cus_${crypto.randomUUID().slice(0, 8)}`;
+  try {
+    await sql`
+      INSERT INTO custody (id, issue_tx_id, user_id, item_id, qty, from_location_id, ref_no)
+      VALUES (${id}, ${input.txId}, ${input.userId}, ${input.itemId}, ${input.qty},
+              ${input.locationId}, ${input.refNo})
+    `;
+    await sql`UPDATE transactions SET custody_id = ${id} WHERE id = ${input.txId}`;
+  } catch {
+    // Kustodi gagal tidak boleh membatalkan transaksi yang sudah sah tercatat.
+    return null;
+  }
+  return loadCustody(id);
 }
 
 export async function listTransactions(request: Request): Promise<Response> {

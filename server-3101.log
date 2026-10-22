@@ -1,0 +1,10 @@
+
+> nemu-frontend@0.1.0 start C:\Users\user\Downloads\nemu-frontend
+> next start "-p" "3101"
+
+▲ Next.js 16.4.2
+- Local:         http://localhost:3101
+- Network:       http://192.168.100.106:3101
+✓ Ready in 901ms
+✓ Running next.config.ts took 490ms
+ ELIFECYCLE  Command failed with exit code 4294967295.

@@ -35,7 +35,8 @@
     "exportLocations": "Ekspor lokasi (CSV)",
     "exportStock": "Ekspor stok (CSV)",
     "exportDone": "Ekspor siap diunduh.",
-    "preview": "Pratinjau"
+    "preview": "Pratinjau",
+    "templateDownloaded": "Template Excel terunduh."
   },
   "admin": {
     "settingsTitle": "Pengaturan",
@@ -484,7 +485,9 @@
     "cannotDeleteHasStock": "Lokasi masih berisi stok — dinonaktifkan, bukan dihapus.",
     "duplicateSku": "SKU sudah dipakai item lain.",
     "requiredField": "Wajib diisi.",
-    "qty": "Qty"
+    "qty": "Qty",
+    "cancel": "Batal",
+    "newItemHint": "Kode QR dibuat otomatis oleh sistem."
   },
   "labels": {
     "title": "Label QR",
@@ -546,7 +549,9 @@
     "scanAgain": "Scan lagi",
     "cameraBack": "Kamera belakang",
     "cameraFront": "Kamera depan",
-    "switchCamera": "Ganti kamera"
+    "switchCamera": "Ganti kamera",
+    "insecureTitle": "Kamera butuh HTTPS",
+    "insecureBody": "Browser hanya mengizinkan kamera pada alamat https:// atau localhost. Karena aplikasi ini dibuka lewat http:// dengan alamat IP, kamera diblokir browser — bukan karena aplikasinya rusak. Unggah foto QR di bawah tetap bisa dipakai, atau ketik kodenya secara manual."
   },
   "history": {
     "title": "Riwayat saya",

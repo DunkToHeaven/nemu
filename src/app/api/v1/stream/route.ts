@@ -1,6 +1,7 @@
 import type { LiveEvent } from "@/lib/types";
 import { decodeSession } from "@/mocks/session";
 import { sessionFromToken, sim, subscribe } from "@/mocks/store";
+import { getSessionById } from "@/server/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,10 +16,32 @@ function tokenFromCookie(header: string | null): string | undefined {
   return decodeSession(raw)?.token ?? raw;
 }
 
+/**
+ * Apakah permintaan ini punya sesi sah?
+ *
+ * Ada dua mode:
+ *  - mock: cookie berisi payload base64 yang bisa dibaca langsung
+ *  - database: cookie hanya id sesi acak; harus diverifikasi ke Postgres
+ *
+ * Sebelumnya fungsi ini HANYA memeriksa store mock, sehingga pada mode database
+ * setiap koneksi SSE dibalas 401. Akibatnya badge status di UI selalu
+ * menampilkan "Offline" padahal jaringan normal — keluhan yang muncul setelah
+ * backend dipindah ke PostgreSQL.
+ */
+async function isAuthorized(request: Request): Promise<boolean> {
+  const token = tokenFromCookie(request.headers.get("cookie"));
+  if (!token) return false;
+
+  if (process.env.DATABASE_ENABLED === "true") {
+    const session = await getSessionById(token);
+    return Boolean(session);
+  }
+  return Boolean(sessionFromToken(token));
+}
+
 /** SSE tiruan: event berasal dari event bus in-memory, bukan Postgres LISTEN/NOTIFY. */
 export async function GET(request: Request): Promise<Response> {
-  const token = tokenFromCookie(request.headers.get("cookie"));
-  if (!sessionFromToken(token)) {
+  if (!(await isAuthorized(request))) {
     return new Response("unauthorized", { status: 401 });
   }
   if (sim().offline) {

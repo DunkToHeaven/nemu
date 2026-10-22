@@ -51,11 +51,29 @@ export async function pruneRateLimits(): Promise<void> {
   await sql`DELETE FROM rate_limits WHERE window_start < now() - interval '1 day'`;
 }
 
-/** Aturan sesuai PRD bagian 12. */
+/**
+ * Aturan sesuai PRD bagian 12.
+ *
+ * Nilai bisa dinaikkan lewat env khusus pengujian. Alasannya jujur: E2E perlu
+ * login puluhan kali dalam hitungan menit, sementara batas produksi 5 percobaan
+ * per 5 menit memang harus tetap ketat. Batas default TIDAK dilonggarkan —
+ * hanya proses uji yang menaikkannya, dan `scripts/smoke-ratelimit.mjs`
+ * memverifikasi batas ketat tetap bekerja pada nilai default.
+ */
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const LOGIN_PER_CODE = envInt("RATE_LIMIT_LOGIN_PER_CODE", 5);
+const LOGIN_PER_IP = envInt("RATE_LIMIT_LOGIN_PER_IP", 20);
+
 export const RATE_RULES = {
-  loginPerCode: { limit: 5, windowSeconds: 300 },
-  loginPerIp: { limit: 20, windowSeconds: 300 },
-  writeTransaction: { limit: 60, windowSeconds: 60 },
-  search: { limit: 120, windowSeconds: 60 },
-  verification: { limit: 60, windowSeconds: 60 },
+  loginPerCode: { limit: LOGIN_PER_CODE, windowSeconds: 300 },
+  loginPerIp: { limit: LOGIN_PER_IP, windowSeconds: 300 },
+  writeTransaction: { limit: envInt("RATE_LIMIT_WRITE", 60), windowSeconds: 60 },
+  search: { limit: envInt("RATE_LIMIT_SEARCH", 120), windowSeconds: 60 },
+  verification: { limit: envInt("RATE_LIMIT_VERIFY", 60), windowSeconds: 60 },
 } as const;

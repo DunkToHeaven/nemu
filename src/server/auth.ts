@@ -46,12 +46,11 @@ export async function createSession(userId: string, role: Role): Promise<string>
   return id;
 }
 
-/** Baca sesi dari cookie. Peran diambil dari tabel users, bukan dari cookie. */
-export async function readSession(): Promise<AuthSession | null> {
-  const jar = await cookies();
-  const raw = jar.get(SESSION_COOKIE)?.value;
-  if (!raw) return null;
-
+/**
+ * Ambil sesi berdasarkan id cookie. Dipakai rute yang tidak lewat `cookies()`,
+ * misalnya SSE `/api/v1/stream` yang membaca header permintaan langsung.
+ */
+export async function getSessionById(sessionId: string): Promise<AuthSession | null> {
   const rows = await sql<
     {
       session_id: string;
@@ -67,7 +66,7 @@ export async function readSession(): Promise<AuthSession | null> {
            u.email, u.shift_ends_at
     FROM sessions s
     JOIN users u ON u.id = s.user_id
-    WHERE s.id = ${raw}
+    WHERE s.id = ${sessionId}
       AND s.revoked_at IS NULL
       AND s.expires_at > now()
       AND u.active
@@ -89,6 +88,15 @@ export async function readSession(): Promise<AuthSession | null> {
   };
 }
 
+/** Baca sesi dari cookie. Peran diambil dari tabel users, bukan dari cookie. */
+export async function readSession(): Promise<AuthSession | null> {
+  const jar = await cookies();
+  const raw = jar.get(SESSION_COOKIE)?.value;
+  if (!raw) return null;
+
+  return getSessionById(raw);
+}
+
 export async function revokeSession(sessionId: string): Promise<void> {
   await sql`UPDATE sessions SET revoked_at = now() WHERE id = ${sessionId}`;
 }
@@ -98,12 +106,31 @@ export async function pruneSessions(): Promise<void> {
   await sql`DELETE FROM sessions WHERE expires_at < now() OR revoked_at IS NOT NULL`;
 }
 
-export function setSessionCookie(response: Response, sessionId: string): void {
+/**
+ * Apakah permintaan ini datang lewat HTTPS?
+ *
+ * Flag `Secure` HANYA boleh dipasang bila koneksi benar-benar TLS. Kesalahan
+ * umum: memakai `NODE_ENV === "production"` sebagai patokan "aman". Saat
+ * dijalankan dengan `pnpm start` di `http://192.168.100.106:3100`, cookie
+ * berflag Secure ditolak browser sehingga login seolah berhasil lalu pengguna
+ * terlempar kembali ke halaman login. Deteksi harus dari koneksi, bukan dari
+ * mode build.
+ */
+function isHttps(request?: Request): boolean {
+  if (!request) return false;
+  // Proxy/tunnel (cloudflared, nginx, Vercel) menandai skema asli di header ini.
+  const forwarded = request.headers.get("x-forwarded-proto");
+  if (forwarded) return forwarded.split(",")[0]?.trim() === "https";
+  return new URL(request.url).protocol === "https:";
+}
+
+export function setSessionCookie(response: Response, sessionId: string, request?: Request): void {
+  const secure = isHttps(request) ? "; Secure" : "";
   response.headers.append(
     "Set-Cookie",
     `${SESSION_COOKIE}=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${
       SESSION_TTL_HOURS * 3600
-    }${process.env.NODE_ENV === "production" ? "; Secure" : ""}`,
+    }${secure}`,
   );
 }
 

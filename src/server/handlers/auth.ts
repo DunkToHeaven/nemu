@@ -44,14 +44,18 @@ export async function handleLogin(request: Request): Promise<Response> {
     bucket: `login:ip:${ip}`,
     ...RATE_RULES.loginPerIp,
   });
-  if (!ipLimit.allowed) throw errors.rateLimited(ipLimit.retryAfterSeconds);
+  if (!ipLimit.allowed) {
+    throw errors.locked(ipLimit.retryAfterSeconds);
+  }
 
   const identity = body.mode === "pin" ? body.code.toUpperCase() : body.email.toLowerCase();
   const idLimit = await checkRateLimit({
     bucket: `login:id:${identity}`,
     ...RATE_RULES.loginPerCode,
   });
-  if (!idLimit.allowed) throw errors.rateLimited(idLimit.retryAfterSeconds);
+  if (!idLimit.allowed) {
+    throw errors.locked(idLimit.retryAfterSeconds);
+  }
 
   let userId: string;
   let role: Role;
@@ -62,8 +66,9 @@ export async function handleLogin(request: Request): Promise<Response> {
     >`SELECT id, role, pin_hash, active FROM users WHERE upper(code) = ${body.code.toUpperCase()}`;
     const user = rows[0];
     // Pesan error netral: tidak membocorkan apakah kode ada atau PIN salah.
+    // Kodenya INVALID_CREDENTIALS agar UI bisa menampilkan sisa percobaan.
     if (!user || !user.active || !(await verifySecret(body.pin, user.pin_hash))) {
-      throw errors.unauthorized();
+      throw errors.invalidCredentials(idLimit.remaining);
     }
     userId = user.id;
     role = user.role;
@@ -73,7 +78,7 @@ export async function handleLogin(request: Request): Promise<Response> {
     >`SELECT id, role, password_hash, active FROM users WHERE lower(email) = ${body.email.toLowerCase()}`;
     const user = rows[0];
     if (!user || !user.active || !(await verifySecret(body.password, user.password_hash))) {
-      throw errors.unauthorized();
+      throw errors.invalidCredentials(idLimit.remaining);
     }
     userId = user.id;
     role = user.role;
@@ -109,7 +114,7 @@ export async function handleLogin(request: Request): Promise<Response> {
     // diarahkan ke dashboard, rute asal ditangani `?next=` di sisi klien.
     redirectTo: "/app",
   });
-  setSessionCookie(response, sessionId);
+  setSessionCookie(response, sessionId, request);
   return response;
 }
 

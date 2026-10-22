@@ -80,6 +80,8 @@ export interface MoveInput {
   refNo?: string | null;
   note?: string | null;
   reversesId?: string | null;
+  /** Mesin/aset terkait (dipakai penutupan kustodi). */
+  equipmentId?: string | null;
 }
 
 /**
@@ -112,12 +114,12 @@ export async function moveStock(
       await tx`
         INSERT INTO transactions (
           id, type, item_id, from_location_id, to_location_id, qty, user_id,
-          reason_id, ref_no, note, idempotency_key, reverses_id
+          reason_id, ref_no, note, idempotency_key, reverses_id, equipment_id
         ) VALUES (
           ${txId}, ${input.type}, ${input.itemId}, ${input.fromLocationId ?? null},
           ${input.toLocationId ?? null}, ${input.qty}, ${user.id},
           ${input.reasonId ?? null}, ${input.refNo ?? null}, ${input.note ?? null},
-          ${input.idempotencyKey}, ${input.reversesId ?? null}
+          ${input.idempotencyKey}, ${input.reversesId ?? null}, ${input.equipmentId ?? null}
         )
       `;
 

@@ -39,7 +39,11 @@ function readRole(request: NextRequest): Role | "opaque" | null {
 
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
-  if (isPublicPath(pathname)) return NextResponse.next();
+  if (isPublicPath(pathname)) {
+    const publicHeaders = new Headers(request.headers);
+    publicHeaders.set("x-nemu-pathname", pathname);
+    return NextResponse.next({ request: { headers: publicHeaders } });
+  }
 
   const role = readRole(request);
 
@@ -64,7 +68,12 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  return NextResponse.next();
+  // Pathname diteruskan ke server lewat header: layout /app memakainya untuk
+  // memetakan peran minimum (mode database tidak bisa memutuskan di edge).
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nemu-pathname", pathname);
+
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {

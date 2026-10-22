@@ -276,10 +276,13 @@ export const itemWriteSchema = z.object({
   categoryId: z.string().min(1),
   unitId: z.string().min(1),
   minStock: z.number().min(0).max(1_000_000),
-  unitValue: z.number().min(0).max(1_000_000_000).nullable(),
-  isBulk: z.boolean(),
-  active: z.boolean(),
-  primaryLocationId: z.string().nullable(),
+  // Opsional: form buat item tidak menanyakan harga satuan. Sebelumnya field ini
+  // wajib sehingga setiap pembuatan item gagal 400 "Data tidak valid" — tombol
+  // Simpan tampak tidak bereaksi.
+  unitValue: z.number().min(0).max(1_000_000_000).nullable().optional(),
+  isBulk: z.boolean().optional(),
+  active: z.boolean().optional(),
+  primaryLocationId: z.string().nullable().optional(),
 });
 
 export const locationWriteSchema = z.object({

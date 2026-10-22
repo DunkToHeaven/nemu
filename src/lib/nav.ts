@@ -55,3 +55,36 @@ export const DATABASE_TABS: { href: string; labelKey: string; adminOnly?: boolea
   { href: "/app/database/label", labelKey: "database.tabLabels", adminOnly: true },
   { href: "/app/database/impor", labelKey: "database.tabImports", adminOnly: true },
 ];
+
+/** Tab Database yang hanya untuk admin, sebagai entri penjaga path. */
+const DATABASE_TABS_ADMIN_PREFIXES: { prefix: string; required: Role }[] = DATABASE_TABS.filter(
+  (tab) => tab.adminOnly,
+).map((tab) => ({ prefix: tab.href, required: "admin" as Role }));
+
+/**
+ * Peran minimum untuk sebuah path, diturunkan dari NAV_ITEMS.
+ *
+ * Dipakai `src/app/app/layout.tsx` untuk menolak akses URL langsung. Tanpa
+ * peta terpusat ini, setiap rute baru harus diingat satu per satu — dan yang
+ * terlupa menjadi celah otorisasi (pernah terjadi pada /app/opname,
+ * /app/transaksi, dan /app/laporan yang terbuka untuk worker).
+ */
+const GUARDED_PREFIXES: { prefix: string; required: Role }[] = [
+  // Sub-rute Database yang hanya untuk admin (tab adminOnly di DATABASE_TABS).
+  ...DATABASE_TABS_ADMIN_PREFIXES,
+  ...NAV_ITEMS.filter((item) => item.required !== "worker")
+    .map((item) => ({ prefix: item.href, required: item.required }))
+    // Prefix terpanjang menang: /app/database/items (supervisor) tidak boleh
+    // menutupi /app/database/pengguna (admin).
+    .sort((a, b) => b.prefix.length - a.prefix.length),
+];
+
+/** Peran minimum yang dibutuhkan untuk path ini, atau null bila bebas. */
+export function requiredRoleForPath(pathname: string): Role | null {
+  for (const entry of GUARDED_PREFIXES) {
+    if (pathname === entry.prefix || pathname.startsWith(`${entry.prefix}/`)) {
+      return entry.required;
+    }
+  }
+  return null;
+}

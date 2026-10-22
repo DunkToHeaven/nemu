@@ -62,25 +62,61 @@ export function ScanView() {
     [router],
   );
 
-  // Pemindaian kamera: BarcodeDetector bila tersedia.
+  /**
+   * Terima hasil decode (bisa berupa URL `/i/<kode>` atau kode mentah).
+   * Dipakai jalur kamera maupun unggah foto.
+   */
+  const handleDecoded = React.useCallback(
+    (raw: string) => {
+      const code = raw.split("/").pop() ?? raw;
+      if (!code) return;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      goToItem(decodeURIComponent(code));
+    },
+    [goToItem],
+  );
+
+  /**
+   * Pemindaian kamera.
+   *
+   * Bug yang diperbaiki: sebelumnya kamera HANYA diminta bila
+   * `BarcodeDetector` tersedia. API itu tidak ada di Chrome untuk Windows,
+   * sehingga halaman langsung berstatus "unsupported" dan kamera tidak pernah
+   * terbuka sama sekali — padahal izin kamera normal.
+   *
+   * Sekarang: kamera selalu diminta lebih dulu (itu yang dilihat pengguna),
+   * lalu deteksi memakai `BarcodeDetector` bila ada, atau `jsQR` sebagai
+   * cadangan yang bekerja di semua browser.
+   */
   React.useEffect(() => {
     let cancelled = false;
     let raf = 0;
-    const detector =
-      typeof window !== "undefined" && "BarcodeDetector" in window
+    let scanTimer: ReturnType<typeof setInterval> | null = null;
+
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setState("unsupported");
+      return;
+    }
+
+    type NativeDetector = {
+      detect: (source: HTMLVideoElement) => Promise<{ rawValue: string }[]>;
+    };
+
+    const nativeDetector: NativeDetector | null =
+      "BarcodeDetector" in window
         ? new (
             window as unknown as {
-              BarcodeDetector: new (options: {
-                formats: string[];
-              }) => { detect: (source: HTMLVideoElement) => Promise<{ rawValue: string }[]> };
+              BarcodeDetector: new (options: { formats: string[] }) => NativeDetector;
             }
           ).BarcodeDetector({ formats: ["qr_code"] })
         : null;
 
-    if (!detector) {
-      setState("unsupported");
-      return;
-    }
+    /** Terima hasil decode; hentikan kamera lalu buka halaman item. */
+    const accept = (raw: string) => {
+      if (cancelled) return;
+      cancelled = true;
+      handleDecoded(raw);
+    };
 
     const start = async () => {
       try {
@@ -99,24 +135,53 @@ export function ScanView() {
         }
         setState("running");
 
-        const tick = async () => {
-          if (cancelled || !videoRef.current) return;
-          try {
-            const results = await detector.detect(videoRef.current);
-            const value = results[0]?.rawValue;
-            if (value) {
-              const code = value.split("/").pop() ?? value;
-              cancelled = true;
-              stream.getTracks().forEach((track) => track.stop());
-              goToItem(decodeURIComponent(code));
-              return;
+        // Jalur 1: BarcodeDetector bawaan (Android Chrome, macOS Safari 17+).
+        if (nativeDetector) {
+          const tick = async () => {
+            if (cancelled || !videoRef.current) return;
+            try {
+              const results = await nativeDetector.detect(videoRef.current);
+              const value = results[0]?.rawValue;
+              if (value) {
+                accept(value);
+                return;
+              }
+            } catch {
+              /* frame gagal: lanjut */
             }
+            raf = requestAnimationFrame(() => void tick());
+          };
+          raf = requestAnimationFrame(() => void tick());
+          return;
+        }
+
+        // Jalur 2: jsQR pada frame canvas. Di-throttle ~5 fps supaya baterai
+        // tidak terkuras; QR tetap terbaca karena pengguna menahan kamera diam.
+        const { default: jsQR } = await import("jsqr");
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+        scanTimer = setInterval(() => {
+          const video = videoRef.current;
+          if (cancelled || !video || !ctx) return;
+          const w = video.videoWidth;
+          const h = video.videoHeight;
+          if (!w || !h) return;
+          // Perkecil frame agar decode cepat di ponsel kelas bawah.
+          const scale = Math.min(1, 480 / Math.max(w, h));
+          canvas.width = Math.round(w * scale);
+          canvas.height = Math.round(h * scale);
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          try {
+            const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const found = jsQR(image.data, image.width, image.height, {
+              inversionAttempts: "dontInvert",
+            });
+            if (found?.data) accept(found.data);
           } catch {
             /* frame gagal: lanjut */
           }
-          raf = requestAnimationFrame(() => void tick());
-        };
-        raf = requestAnimationFrame(() => void tick());
+        }, 200);
       } catch {
         if (!cancelled) setState("denied");
       }
@@ -127,9 +192,54 @@ export function ScanView() {
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
+      if (scanTimer) clearInterval(scanTimer);
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
-  }, [goToItem]);
+  }, [handleDecoded]);
+
+  /**
+   * Apakah halaman berjalan di secure context?
+   *
+   * `getUserMedia` HANYA tersedia di HTTPS atau localhost. Saat aplikasi dibuka
+   * lewat `http://192.168.x.x:3100` (akses dari HP di WiFi kantor), browser
+   * memblokir kamera sepenuhnya — bukan karena izin ditolak, tetapi karena
+   * konteksnya tidak aman. Tanpa pesan khusus, pengguna melihat "tidak
+   * didukung" dan mengira aplikasinya rusak.
+   */
+  const insecureContext = React.useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return !window.isSecureContext;
+  }, []);
+
+  /** Decode QR dari gambar yang diunggah — bekerja juga di HTTP. */
+  const onPickPhoto = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const bitmap = await createImageBitmap(file);
+      const canvas = document.createElement("canvas");
+      const scale = Math.min(1, 900 / Math.max(bitmap.width, bitmap.height));
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const { default: jsQR } = await import("jsqr");
+      const found = jsQR(image.data, image.width, image.height, {
+        inversionAttempts: "attemptBoth",
+      });
+      if (found?.data) {
+        handleDecoded(found.data);
+      } else {
+        setManualError(t("invalidCode"));
+      }
+    } catch {
+      setManualError(t("invalidCode"));
+    } finally {
+      event.target.value = "";
+    }
+  };
 
   const toggleTorch = async () => {
     const track = streamRef.current?.getVideoTracks()[0];
@@ -196,23 +306,41 @@ export function ScanView() {
         </div>
       </div>
 
-      {state === "denied" || state === "unsupported" || state === "error" ? (
+      {insecureContext || state === "denied" || state === "unsupported" || state === "error" ? (
         <section className="space-y-2 rounded-2xl border border-warning/40 bg-warning-soft/60 p-4">
           <p className="flex items-center gap-2 text-sm font-extrabold text-warning-foreground">
             <Icon name="alert" className="size-4" />
-            {state === "unsupported" ? t("notSupported") : t("permissionTitle")}
+            {insecureContext
+              ? t("insecureTitle")
+              : state === "unsupported"
+                ? t("notSupported")
+                : t("permissionTitle")}
           </p>
-          <p className="text-[13px] text-foreground">{t("permissionBody")}</p>
-          <ul className="space-y-1 text-2xs text-muted-foreground">
-            <li>· {t("permissionChrome")}</li>
-            <li>· {t("permissionSafari")}</li>
-            <li>· {t("permissionFirefox")}</li>
-          </ul>
+          <p className="text-[13px] text-foreground">
+            {insecureContext ? t("insecureBody") : t("permissionBody")}
+          </p>
+          {insecureContext ? null : (
+            <ul className="space-y-1 text-2xs text-muted-foreground">
+              <li>· {t("permissionChrome")}</li>
+              <li>· {t("permissionSafari")}</li>
+              <li>· {t("permissionFirefox")}</li>
+            </ul>
+          )}
+          {/* Unggah foto TETAP bekerja di HTTP, jadi ini jalan keluar nyata
+              ketika kamera diblokir karena konteks tidak aman. */}
           <label className="mt-1 flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-card text-[13px] font-bold">
             <Icon name="upload" className="size-4" />
             {t("uploadPhoto")}
-            <input type="file" accept="image/*" className="sr-only" />
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="sr-only"
+              data-testid="scan-photo"
+              onChange={onPickPhoto}
+            />
           </label>
+          <p className="text-2xs text-muted-foreground">{t("uploadHint")}</p>
         </section>
       ) : null}
 

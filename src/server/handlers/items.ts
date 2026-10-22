@@ -107,8 +107,8 @@ export async function searchItems(request: Request): Promise<Response> {
       WHERE item_id = i.id AND status IN ('recorded','approved')
     ) v ON true
     WHERE i.active
-      AND (${q} = '' OR i.name ILIKE ${"%" + q + "%"} OR i.sku ILIKE ${"%" + q + "%"}
-           OR i.code ILIKE ${"%" + q + "%"})
+      AND (${q} = '' OR i.name ILIKE ${`%${q}%`} OR i.sku ILIKE ${`%${q}%`}
+           OR i.code ILIKE ${`%${q}%`})
     ORDER BY i.name
     LIMIT 500
   `;
@@ -349,7 +349,7 @@ export async function listItems(request: Request): Promise<Response> {
   const rows = await sql<ItemRow[]>`
     SELECT * FROM items
     WHERE (${includeInactive} OR active)
-      AND (${q} = '' OR name ILIKE ${"%" + q + "%"} OR sku ILIKE ${"%" + q + "%"})
+      AND (${q} = '' OR name ILIKE ${`%${q}%`} OR sku ILIKE ${`%${q}%`})
     ORDER BY name
     LIMIT 1000
   `;

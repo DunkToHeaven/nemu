@@ -487,7 +487,9 @@
     "scanAgain": "Scan again",
     "cameraBack": "Rear camera",
     "cameraFront": "Front camera",
-    "switchCamera": "Switch camera"
+    "switchCamera": "Switch camera",
+    "insecureTitle": "Camera requires HTTPS",
+    "insecureBody": "Browsers only allow camera access on https:// or localhost. Because this app is opened over http:// with an IP address, the browser blocks the camera — the app is not broken. You can still upload a QR photo below, or type the code manually."
   },
   "history": {
     "title": "My history",
@@ -743,7 +745,9 @@
     "cannotDeleteHasStock": "Location still holds stock — deactivated, not deleted.",
     "duplicateSku": "SKU already used by another item.",
     "requiredField": "Required.",
-    "qty": "Qty"
+    "qty": "Qty",
+    "cancel": "Cancel",
+    "newItemHint": "The QR code is generated automatically."
   },
   "labels": {
     "title": "QR labels",
@@ -814,7 +818,8 @@
     "exportLocations": "Export locations (CSV)",
     "exportStock": "Export stock (CSV)",
     "exportDone": "Export ready to download.",
-    "preview": "Preview"
+    "preview": "Preview",
+    "templateDownloaded": "Excel template downloaded."
   },
   "admin": {
     "settingsTitle": "Settings",

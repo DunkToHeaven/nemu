@@ -3,11 +3,13 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import * as React from "react";
 import { toast } from "sonner";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/app/states";
 import { ConfidenceBadge } from "@/components/confidence-badge";
+import { NewItemSheet } from "@/components/database/new-item-sheet";
 import { Icon } from "@/components/icons";
 import { useSession } from "@/components/session-provider";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +44,18 @@ export function ItemsTable() {
   const [activeOnly, setActiveOnly] = React.useState(true);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [openItem, setOpenItem] = React.useState<ItemRow | null>(null);
+  const [newOpen, setNewOpen] = React.useState(false);
+  const searchParams = useSearchParams();
+
+  // Tombol "+ Item baru" menautkan ke ?new=1. Tanpa efek ini parameter itu
+  // tidak dibaca siapa pun dan tombolnya tampak rusak (tidak ada reaksi).
+  React.useEffect(() => {
+    if (searchParams?.get("new") === "1") setNewOpen(true);
+    // ?q= dipakai tautan yang dibagikan (mis. dari notifikasi stok menipis).
+    // Tanpa ini, membuka tautan tersebut menampilkan seluruh daftar.
+    const initialQuery = searchParams?.get("q");
+    if (initialQuery) setQuery(initialQuery);
+  }, [searchParams]);
 
   React.useEffect(() => {
     const timer = setTimeout(() => setDebounced(query.trim()), 250);
@@ -282,6 +296,7 @@ export function ItemsTable() {
       )}
 
       <ItemSheet item={openItem} onClose={() => setOpenItem(null)} canEdit={isAdmin} />
+      <NewItemSheet open={newOpen} onClose={() => setNewOpen(false)} />
     </div>
   );
 }

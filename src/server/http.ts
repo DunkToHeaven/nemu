@@ -21,6 +21,17 @@ export class ApiError extends Error {
 
 export const errors = {
   unauthorized: () => new ApiError(401, "UNAUTHORIZED", "Sesi tidak valid atau sudah berakhir."),
+  /**
+   * Kredensial salah. Kode dan bentuk details mengikuti kontrak UI
+   * (`login-card.tsx` mengharapkan `INVALID_CREDENTIALS` + `remaining`).
+   */
+  invalidCredentials: (remaining: number) =>
+    new ApiError(401, "INVALID_CREDENTIALS", "Kode atau PIN salah.", { remaining }),
+  /** Terlalu banyak percobaan login. UI mengharapkan `LOCKED` + `retryAfter`. */
+  locked: (retryAfter: number) =>
+    new ApiError(429, "LOCKED", `Terlalu banyak percobaan. Coba lagi dalam ${retryAfter} detik.`, {
+      retryAfter,
+    }),
   forbidden: (role?: Role) =>
     new ApiError(
       403,
@@ -37,6 +48,7 @@ export const errors = {
       429,
       "RATE_LIMITED",
       `Terlalu banyak percobaan. Coba lagi dalam ${retryAfter} detik.`,
+      { retryAfterSeconds: retryAfter },
     ),
   tooMany: (message: string) => new ApiError(422, "UNPROCESSABLE", message),
 };
