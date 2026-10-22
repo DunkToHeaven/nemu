@@ -10,3 +10,7 @@ playwright-report/
 .env*.local
 .DS_Store
 docs/*.png
+
+# log lokal
+server*.log
+e2e-*.log
