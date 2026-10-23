@@ -22,14 +22,27 @@ declare global {
   var __nemu_sql: Sql | undefined;
 }
 
+/**
+ * Opsi koneksi bersama.
+ *
+ * `prepare: false` WAJIB untuk Supabase Supavisor dalam mode transaction
+ * (port 6543): pooler memakai ulang koneksi antar transaksi, sehingga prepared
+ * statement bernama bisa bertabrakan antar request dan menghasilkan error
+ * "prepared statement already exists". Pada Postgres lokal opsi ini netral.
+ */
+const BASE_OPTIONS = {
+  transform: { undefined: null as null },
+  onnotice: () => {},
+  prepare: false,
+} as const;
+
 function create(): Sql {
   return postgres(CONNECTION, {
-    max: Number(process.env.DATABASE_POOL_MAX ?? 10),
+    ...BASE_OPTIONS,
+    // Supabase free plan membatasi jumlah koneksi; jangan buka pool besar.
+    max: Number(process.env.DATABASE_POOL_MAX ?? 5),
     idle_timeout: 20,
-    connect_timeout: 10,
-    // Angka besar (qty, unit_value) harus tetap angka, bukan string.
-    transform: { undefined: null },
-    onnotice: () => {},
+    connect_timeout: 15,
   });
 }
 
@@ -61,11 +74,13 @@ export function tenantPool(slug: string): Sql {
   if (existing) return existing;
 
   const created = postgres(CONNECTION, {
-    max: Number(process.env.DATABASE_POOL_MAX ?? 5),
-    idle_timeout: 20,
-    connect_timeout: 10,
-    transform: { undefined: null },
-    onnotice: () => {},
+    ...BASE_OPTIONS,
+    // Satu pool kecil per tenant: dengan 5 tenant aktif, total koneksi masih
+    // di bawah batas Supabase. Pool besar per tenant akan cepat menghabiskan
+    // kuota karena setiap tenant punya pool sendiri.
+    max: Number(process.env.TENANT_POOL_MAX ?? 2),
+    idle_timeout: 15,
+    connect_timeout: 15,
     connection: { search_path: `${schemaFor(slug)},public` },
   });
   pools.set(slug, created);
