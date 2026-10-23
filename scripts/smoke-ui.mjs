@@ -53,7 +53,11 @@ try {
   if (/tidak ditemukan|belum ada|no results|empty/i.test(searchText) || searchText.length < 400) {
     console.log("  LEWATI  gudang kosong — pencarian tidak diharapkan menemukan item");
   } else {
-    check("hasil pencarian berisi 'Bearing'", /bearing/i.test(searchText), searchText.slice(0, 120));
+    check(
+      "hasil pencarian berisi 'Bearing'",
+      /bearing/i.test(searchText),
+      searchText.slice(0, 120),
+    );
   }
 
   console.log("\n== halaman item ==");

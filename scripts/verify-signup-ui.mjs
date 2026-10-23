@@ -60,7 +60,10 @@ console.log("\n== 2. DAFTAR DARI HALAMAN SIGNUP ==");
   check("pendaftaran langsung masuk dashboard", landed, new URL(page.url()).pathname);
 
   const cookies = await ctx.cookies();
-  check("sesi tersimpan", cookies.some((c) => c.name === "nemu_session"));
+  check(
+    "sesi tersimpan",
+    cookies.some((c) => c.name === "nemu_session"),
+  );
 
   // Dashboard gudang baru harus kosong.
   await page.waitForTimeout(2000);
@@ -101,7 +104,11 @@ console.log("\n== 3. EMAIL SAMA DITOLAK DI UI ==");
   await page2.getByTestId("signup-password").fill("rahasia12345");
   await page2.getByTestId("signup-submit").click();
   await page2.waitForTimeout(3000);
-  const alert = await page2.locator('[role="alert"]').first().textContent().catch(() => null);
+  const alert = await page2
+    .locator('[role="alert"]')
+    .first()
+    .textContent()
+    .catch(() => null);
   check("email duplikat diberi pesan jelas", Boolean(alert), (alert ?? "").slice(0, 60));
   await ctx2.close();
 }
