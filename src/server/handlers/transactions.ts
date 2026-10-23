@@ -7,7 +7,7 @@
  * dibuktikan di db/test/concurrent-issue.sql.
  */
 import { z } from "zod";
-import { sql } from "@/server/db";
+import { tenantPool } from "@/server/db";
 import { loadCustody, loadStockLevel, loadTransaction } from "@/server/handlers/tx-shape";
 import { errors, ok, paginate, parseBody, requireSession } from "@/server/http";
 import { checkRateLimit, RATE_RULES } from "@/server/rate-limit";
@@ -52,7 +52,7 @@ export async function createTransaction(request: Request): Promise<Response> {
   const body = await parseBody(request, transactionSchema);
 
   if (body.type === "issue") {
-    const result = await issueStock(session.user, {
+    const result = await issueStock(session.user, session.tenant, {
       itemId: body.itemId,
       locationId: body.locationId,
       qty: body.qty,
@@ -82,7 +82,7 @@ export async function createTransaction(request: Request): Promise<Response> {
     // berstatus "dibawa" sampai ditutup, supaya tidak hilang dari pengawasan.
     let custody = null;
     if (result.code !== "duplicate" && result.txId) {
-      custody = await openCustodyIfEnabled({
+      custody = await openCustodyIfEnabled(session.tenant, {
         txId: result.txId,
         userId: session.user.id,
         itemId: body.itemId,
@@ -116,7 +116,7 @@ export async function createTransaction(request: Request): Promise<Response> {
     throw errors.badRequest("Penerimaan butuh lokasi tujuan.");
   }
 
-  const result = await moveStock(session.user, {
+  const result = await moveStock(session.user, session.tenant, {
     type: body.type,
     itemId: body.itemId,
     fromLocationId: body.fromLocationId ?? null,
@@ -152,27 +152,31 @@ export async function createTransaction(request: Request): Promise<Response> {
  * Buka entri kustodi untuk transaksi `issue` bila fitur aktif di pengaturan.
  * Mengembalikan null bila fitur mati — bukan error, karena kustodi opsional.
  */
-async function openCustodyIfEnabled(input: {
-  txId: string;
-  userId: string;
-  itemId: string;
-  locationId: string;
-  qty: number;
-  refNo: string | null;
-}) {
-  const enabled = await sql<{ custody_enabled: boolean }[]>`
+async function openCustodyIfEnabled(
+  tenant: string,
+  input: {
+    txId: string;
+    userId: string;
+    itemId: string;
+    locationId: string;
+    qty: number;
+    refNo: string | null;
+  },
+) {
+  const db = tenantPool(tenant);
+  const enabled = await db<{ custody_enabled: boolean }[]>`
     SELECT custody_enabled FROM settings WHERE id
   `;
   if (!enabled[0]?.custody_enabled) return null;
 
   const id = `cus_${crypto.randomUUID().slice(0, 8)}`;
   try {
-    await sql`
+    await db`
       INSERT INTO custody (id, issue_tx_id, user_id, item_id, qty, from_location_id, ref_no)
       VALUES (${id}, ${input.txId}, ${input.userId}, ${input.itemId}, ${input.qty},
               ${input.locationId}, ${input.refNo})
     `;
-    await sql`UPDATE transactions SET custody_id = ${id} WHERE id = ${input.txId}`;
+    await db`UPDATE transactions SET custody_id = ${id} WHERE id = ${input.txId}`;
   } catch {
     // Kustodi gagal tidak boleh membatalkan transaksi yang sudah sah tercatat.
     return null;
@@ -191,7 +195,8 @@ export async function listTransactions(request: Request): Promise<Response> {
   const mineOnly = session.user.role === "worker" || url.searchParams.get("scope") === "mine";
   const userId = url.searchParams.get("userId");
 
-  const rows = await sql<
+  const db = tenantPool(session.tenant);
+  const rows = await db<
     {
       id: string;
       type: string;
@@ -277,8 +282,9 @@ export async function listTransactions(request: Request): Promise<Response> {
 }
 
 export async function itemTransactions(request: Request, itemId: string): Promise<Response> {
-  await requireSession();
-  const rows = await sql<
+  const session = await requireSession();
+  const db = tenantPool(session.tenant);
+  const rows = await db<
     { id: string; type: string; qty: number; created_at: Date; user_name: string }[]
   >`
     SELECT t.id, t.type, t.qty, t.created_at, u.name AS user_name
@@ -301,7 +307,7 @@ export async function reverseTx(request: Request, txId: string): Promise<Respons
   const session = await requireSession();
   const body = await parseBody(request, z.object({ idempotencyKey: z.string().min(8).max(120) }));
 
-  const result = await reverseTransaction(session.user, txId, body.idempotencyKey);
+  const result = await reverseTransaction(session.user, session.tenant, txId, body.idempotencyKey);
   if (!result.ok) {
     if (result.code === "not_found") throw errors.notFound("Transaksi");
     if (result.code === "too_late") {

@@ -8,8 +8,8 @@
  */
 
 import type { AuthUser } from "@/server/auth";
-import { sql } from "@/server/db";
-import { ok, requireRole, requireSession } from "@/server/http";
+import { tenantPool } from "@/server/db";
+import { ok, requireRole, requireSession, tenantDb } from "@/server/http";
 
 const DAY = 86_400_000;
 
@@ -20,10 +20,10 @@ function confidenceLevel(score: number): "high" | "medium" | "low" | "never" {
   return "never";
 }
 
-export async function getDashboard(user: AuthUser): Promise<Response> {
-  await requireSession();
+export async function getDashboard(user: AuthUser, tenant: string): Promise<Response> {
+  const db = tenantPool(tenant);
 
-  const totals = await sql<
+  const totals = await db<
     {
       total_items: number;
       total_qty: number;
@@ -71,7 +71,7 @@ export async function getDashboard(user: AuthUser): Promise<Response> {
 
   // 10 transaksi terakhir. Untuk pekerja dibatasi miliknya sendiri.
   const scoped = user.role === "worker";
-  const recent = await sql<
+  const recent = await db<
     {
       id: string;
       type: string;
@@ -92,7 +92,7 @@ export async function getDashboard(user: AuthUser): Promise<Response> {
     ORDER BY t.created_at DESC LIMIT 10
   `;
 
-  const lowStock = await sql<
+  const lowStock = await db<
     {
       item_id: string;
       item_name: string;
@@ -124,7 +124,7 @@ export async function getDashboard(user: AuthUser): Promise<Response> {
     LIMIT 6
   `;
 
-  const lastTaken = await sql<
+  const lastTaken = await db<
     { item_id: string; item_name: string; item_code: string; qty: number; at: Date; unit: string }[]
   >`
     SELECT DISTINCT ON (t.item_id)
@@ -138,7 +138,7 @@ export async function getDashboard(user: AuthUser): Promise<Response> {
     LIMIT 5
   `;
 
-  const usage = await sql<{ date: string; qty: number; tx: number }[]>`
+  const usage = await db<{ date: string; qty: number; tx: number }[]>`
     SELECT to_char(d.day, 'YYYY-MM-DD') AS date,
            COALESCE(SUM(t.qty), 0)::int AS qty,
            count(t.id)::int AS tx
@@ -151,7 +151,7 @@ export async function getDashboard(user: AuthUser): Promise<Response> {
     GROUP BY d.day ORDER BY d.day
   `;
 
-  const topItems = await sql<{ id: string; label: string; qty: number; tx: number }[]>`
+  const topItems = await db<{ id: string; label: string; qty: number; tx: number }[]>`
     SELECT i.id, i.name AS label, SUM(t.qty)::int AS qty, count(*)::int AS tx
     FROM transactions t JOIN items i ON i.id = t.item_id
     WHERE t.type = 'issue' AND t.created_at > now() - interval '30 days'
@@ -159,7 +159,7 @@ export async function getDashboard(user: AuthUser): Promise<Response> {
     GROUP BY i.id, i.name ORDER BY qty DESC LIMIT 5
   `;
 
-  const needsCount = await sql<
+  const needsCount = await db<
     {
       item_id: string;
       item_name: string;
@@ -183,7 +183,7 @@ export async function getDashboard(user: AuthUser): Promise<Response> {
     ORDER BY COALESCE(s.qty, 0) DESC LIMIT 5
   `;
 
-  const custodyRows = await sql<
+  const custodyRows = await db<
     { id: string; item_id: string; item_name: string; qty: number; opened_at: Date; unit: string }[]
   >`
     SELECT c.id, c.item_id, i.name AS item_name, (c.qty - c.qty_settled)::int AS qty,
@@ -195,11 +195,11 @@ export async function getDashboard(user: AuthUser): Promise<Response> {
     ORDER BY c.created_at DESC LIMIT 5
   `;
 
-  const teamCustody = await sql<{ count: number }[]>`
+  const teamCustody = await db<{ count: number }[]>`
     SELECT count(*)::int AS count FROM custody WHERE status = 'open'
   `;
 
-  const activeUsers = await sql<{ count: number }[]>`
+  const activeUsers = await db<{ count: number }[]>`
     SELECT count(DISTINCT user_id)::int AS count FROM sessions
     WHERE expires_at > now() AND revoked_at IS NULL
   `;
@@ -288,14 +288,14 @@ export async function getDashboard(user: AuthUser): Promise<Response> {
   });
 }
 
-export async function getStock(request: Request): Promise<Response> {
-  await requireRole("supervisor");
+export async function getStock(request: Request, tenant: string): Promise<Response> {
+  const db = tenantPool(tenant);
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
   const warehouseId = url.searchParams.get("warehouseId");
   const limit = Math.min(500, Math.max(1, Number(url.searchParams.get("limit") ?? 100) || 100));
 
-  const rows = await sql<
+  const rows = await db<
     {
       item_id: string;
       item_name: string;
@@ -355,13 +355,13 @@ export async function getStock(request: Request): Promise<Response> {
   });
 }
 
-export async function getReports(request: Request): Promise<Response> {
-  await requireRole("supervisor");
+export async function getReports(request: Request, tenant: string): Promise<Response> {
+  const db = tenantPool(tenant);
   const url = new URL(request.url);
   const days = Math.min(365, Math.max(1, Number(url.searchParams.get("days") ?? 30) || 30));
   const since = new Date(Date.now() - days * DAY);
 
-  const trend = await sql<{ date: string; qty: number; tx: number }[]>`
+  const trend = await db<{ date: string; qty: number; tx: number }[]>`
     SELECT to_char(d.day, 'YYYY-MM-DD') AS date,
            COALESCE(SUM(t.qty), 0)::int AS qty, count(t.id)::int AS tx
     FROM generate_series(date_trunc('day', now()) - (${days - 1} || ' days')::interval,
@@ -370,21 +370,21 @@ export async function getReports(request: Request): Promise<Response> {
     GROUP BY d.day ORDER BY d.day
   `;
 
-  const topItems = await sql<{ id: string; label: string; qty: number; tx: number }[]>`
+  const topItems = await db<{ id: string; label: string; qty: number; tx: number }[]>`
     SELECT i.id, i.name AS label, SUM(t.qty)::int AS qty, count(*)::int AS tx
     FROM transactions t JOIN items i ON i.id = t.item_id
     WHERE t.type = 'issue' AND t.created_at >= ${since}
     GROUP BY i.id, i.name ORDER BY qty DESC LIMIT 10
   `;
 
-  const byUser = await sql<{ id: string; label: string; qty: number; tx: number }[]>`
+  const byUser = await db<{ id: string; label: string; qty: number; tx: number }[]>`
     SELECT u.id, u.name AS label, SUM(t.qty)::int AS qty, count(*)::int AS tx
     FROM transactions t JOIN users u ON u.id = t.user_id
     WHERE t.created_at >= ${since}
     GROUP BY u.id, u.name ORDER BY tx DESC LIMIT 10
   `;
 
-  const byReason = await sql<{ id: string; label: string; qty: number; tx: number }[]>`
+  const byReason = await db<{ id: string; label: string; qty: number; tx: number }[]>`
     SELECT COALESCE(r.id, 'none') AS id, COALESCE(r.name, 'Tanpa alasan') AS label,
            SUM(t.qty)::int AS qty, count(*)::int AS tx
     FROM transactions t LEFT JOIN reasons r ON r.id = t.reason_id
@@ -392,7 +392,7 @@ export async function getReports(request: Request): Promise<Response> {
     GROUP BY r.id, r.name ORDER BY tx DESC LIMIT 10
   `;
 
-  const conf = await sql<{ bucket: string; count: number }[]>`
+  const conf = await db<{ bucket: string; count: number }[]>`
     SELECT CASE WHEN v.cnt > 0 AND v.last_verified > now() - interval '30 days' THEN 'high'
                 WHEN v.cnt > 0 AND v.last_verified > now() - interval '90 days' THEN 'medium'
                 WHEN v.cnt > 0 THEN 'low' ELSE 'never' END AS bucket,
@@ -408,7 +408,7 @@ export async function getReports(request: Request): Promise<Response> {
   const confMap = new Map(conf.map((c) => [c.bucket, c.count]));
   const confTotal = conf.reduce((sum, c) => sum + c.count, 0);
 
-  const deadStock = await sql<
+  const deadStock = await db<
     { item_id: string; name: string; last_moved_at: Date | null; qty: number; days_idle: number }[]
   >`
     SELECT i.id AS item_id, i.name, m.last_moved_at,
@@ -424,7 +424,7 @@ export async function getReports(request: Request): Promise<Response> {
     ORDER BY days_idle DESC LIMIT 10
   `;
 
-  const custodyStats = await sql<
+  const custodyStats = await db<
     { open_entries: number; avg_hold_hours: number; overdue: number }[]
   >`
     SELECT count(*) FILTER (WHERE status = 'open')::int AS open_entries,
@@ -435,7 +435,7 @@ export async function getReports(request: Request): Promise<Response> {
     FROM custody
   `;
 
-  const custodyByEquipment = await sql<{ id: string; label: string; qty: number; tx: number }[]>`
+  const custodyByEquipment = await db<{ id: string; label: string; qty: number; tx: number }[]>`
     SELECT COALESCE(e.id, 'none') AS id, COALESCE(e.name, 'Tanpa mesin') AS label,
            SUM(t.qty)::int AS qty, count(*)::int AS tx
     FROM transactions t LEFT JOIN equipment e ON e.id = t.equipment_id
@@ -457,7 +457,7 @@ export async function getReports(request: Request): Promise<Response> {
       low: confMap.get("low") ?? 0,
       never: confMap.get("never") ?? 0,
       total: confTotal,
-      needsCount: await sql<
+      needsCount: await db<
         { item_id: string; item_name: string; location_path: string; score: number; qty: number }[]
       >`
         SELECT i.id AS item_id, i.name AS item_name, COALESCE(l.path, '—') AS location_path,

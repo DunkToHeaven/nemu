@@ -53,6 +53,7 @@ import {
   settleCustody,
   submitVerification,
 } from "@/server/handlers/operations";
+import { checkEmail, handleSignup } from "@/server/handlers/signup";
 import {
   createTransaction,
   itemTransactions,
@@ -138,6 +139,12 @@ async function requireRoleOrThrow(role: "worker" | "supervisor" | "admin") {
 /** Rute database yang sudah diimplementasikan. */
 async function dispatchDb(request: NextRequest, segments: string[]): Promise<Response> {
   const [head, second, third] = segments;
+
+  /**
+   * Organisasi pemilik sesi. Hampir semua rute data membutuhkannya karena
+   * tabel aplikasi ada di schema tenant, bukan di `public`.
+   */
+  const tenantOf = async (): Promise<string> => (await requireSessionOrThrow()).tenant;
   const method = request.method;
 
   if (head === "health") {
@@ -150,6 +157,8 @@ async function dispatchDb(request: NextRequest, segments: string[]): Promise<Res
   if (head === "version") return NextResponse.json({ version: "0.2.0", api: "v1" });
 
   if (head === "auth") {
+    if (second === "signup" && method === "POST") return handleSignup(request);
+    if (second === "email" && method === "GET") return checkEmail(request);
     if (second === "login" && method === "POST") return handleLogin(request);
     if (second === "logout" && method === "POST") return handleLogout();
     if (second === "session" && method === "GET") return handleSession();
@@ -175,112 +184,113 @@ async function dispatchDb(request: NextRequest, segments: string[]): Promise<Res
   }
 
   // ---- master data ----
-  if (head === "meta" && method === "GET") return getMeta();
+  if (head === "meta" && method === "GET") return getMeta(await tenantOf());
   if (head === "locations") {
-    if (!second && method === "GET") return listLocations(request);
-    if (!second && method === "POST") return createLocation(request);
-    if (second && method === "PATCH") return updateLocation(request, second);
+    if (!second && method === "GET") return listLocations(request, await tenantOf());
+    if (!second && method === "POST") return createLocation(request, await tenantOf());
+    if (second && method === "PATCH") return updateLocation(request, second, await tenantOf());
   }
   if (head === "categories") {
-    if (!second && method === "GET") return listCategories();
-    if (!second && method === "POST") return upsertCategory(request);
-    if (second && method === "PATCH") return upsertCategory(request, second);
+    if (!second && method === "GET") return listCategories(await tenantOf());
+    if (!second && method === "POST") return upsertCategory(request, await tenantOf());
+    if (second && method === "PATCH") return upsertCategory(request, await tenantOf(), second);
   }
   if (head === "units") {
-    if (!second && method === "GET") return listUnits();
-    if (!second && method === "POST") return upsertUnit(request);
-    if (second && method === "PATCH") return upsertUnit(request, second);
+    if (!second && method === "GET") return listUnits(await tenantOf());
+    if (!second && method === "POST") return upsertUnit(request, await tenantOf());
+    if (second && method === "PATCH") return upsertUnit(request, await tenantOf(), second);
   }
   if (head === "reasons") {
-    if (!second && method === "GET") return listReasons(request);
-    if (!second && method === "POST") return upsertReason(request);
-    if (second && method === "PATCH") return upsertReason(request, second);
+    if (!second && method === "GET") return listReasons(request, await tenantOf());
+    if (!second && method === "POST") return upsertReason(request, await tenantOf());
+    if (second && method === "PATCH") return upsertReason(request, await tenantOf(), second);
   }
   if (head === "equipment") {
-    if (!second && method === "GET") return listEquipment();
-    if (!second && method === "POST") return upsertEquipment(request);
-    if (second && method === "PATCH") return upsertEquipment(request, second);
+    if (!second && method === "GET") return listEquipment(await tenantOf());
+    if (!second && method === "POST") return upsertEquipment(request, await tenantOf());
+    if (second && method === "PATCH") return upsertEquipment(request, await tenantOf(), second);
   }
   if (head === "users") {
-    if (!second && method === "GET") return listUsers();
-    if (!second && method === "POST") return createUser(request);
-    if (second && method === "PATCH") return updateUser(request, second);
+    if (!second && method === "GET") return listUsers(await tenantOf());
+    if (!second && method === "POST") return createUser(request, await tenantOf());
+    if (second && method === "PATCH") return updateUser(request, second, await tenantOf());
   }
 
   // ---- dashboard, laporan, stok ----
   if (head === "dashboard" && method === "GET") {
     const s = await requireSessionOrThrow();
-    return getDashboard(s.user);
+    return getDashboard(s.user, s.tenant);
   }
-  if (head === "reports" && method === "GET") return getReports(request);
-  if (head === "stock" && method === "GET") return getStock(request);
-  if (head === "events" && method === "GET") return getEvents();
+  if (head === "reports" && method === "GET") return getReports(request, await tenantOf());
+  if (head === "stock" && method === "GET") return getStock(request, await tenantOf());
+  if (head === "events" && method === "GET") return getEvents(await tenantOf());
 
   // ---- kustodi & verifikasi ----
   if (head === "custody") {
     const s = await requireSessionOrThrow();
-    if (!second && method === "GET") return listCustody(request, s.user);
-    if (second === "settle-batch" && method === "POST") return settleBatch(request, s.user);
+    if (!second && method === "GET") return listCustody(request, s.user, await tenantOf());
+    if (second === "settle-batch" && method === "POST")
+      return settleBatch(request, s.user, s.tenant);
     if (second && third === "settle" && method === "POST") {
-      return settleCustody(request, second, s.user);
+      return settleCustody(request, second, s.user, s.tenant);
     }
   }
   if (head === "verifications") {
     if (!second && method === "POST") {
       const s = await requireSessionOrThrow();
-      return submitVerification(request, s.user);
+      return submitVerification(request, s.user, await tenantOf());
     }
-    if (!second && method === "GET") return listVerifications(request);
+    if (!second && method === "GET") return listVerifications(request, await tenantOf());
     if (second && third === "review" && method === "POST") {
       const s = await requireRoleOrThrow("supervisor");
-      return reviewVerification(request, second, s.user);
+      return reviewVerification(request, second, s.user, s.tenant);
     }
   }
 
   // ---- opname ----
   if (head === "stock-counts") {
-    if (!second && method === "GET") return listCounts();
+    if (!second && method === "GET") return listCounts(await tenantOf());
     if (!second && method === "POST") {
       const s = await requireRoleOrThrow("supervisor");
-      return createCount(request, s.user);
+      return createCount(request, s.user, await tenantOf());
     }
     if (second && third === "approve" && method === "POST") {
       const s = await requireRoleOrThrow("supervisor");
-      return approveCount(request, second, s.user);
+      return approveCount(request, second, s.user, s.tenant);
     }
     // /stock-counts/:id/lines/:lineId
     if (second && segments[2] === "lines" && segments[3] && method === "POST") {
-      return setCountLine(request, second, segments[3]);
+      return setCountLine(request, second, segments[3], await tenantOf());
     }
   }
 
   // ---- admin ----
   if (head === "settings") {
-    if (method === "GET") return getSettings();
+    if (method === "GET") return getSettings(await tenantOf());
     if (method === "PATCH") {
       const s = await requireRoleOrThrow("admin");
-      return updateSettings(request, s.user);
+      return updateSettings(request, s.user, await tenantOf());
     }
   }
   if (head === "integrations" && second === "google") {
-    if (!third && method === "GET") return getGoogle();
+    if (!third && method === "GET") return getGoogle(await tenantOf());
     if (third && method === "POST") {
       const s = await requireRoleOrThrow("admin");
-      return googleAction(third, s.user);
+      return googleAction(third, s.user, s.tenant);
     }
   }
   if (head === "imports") {
     const s = await requireRoleOrThrow("admin");
-    if (!second && method === "GET") return listImports();
-    if (!second && method === "POST") return previewImport(request, s.user);
+    if (!second && method === "GET") return listImports(await tenantOf());
+    if (!second && method === "POST") return previewImport(request, s.user, await tenantOf());
     if (second && third === "apply" && method === "POST") {
-      return applyImport(request, second, s.user);
+      return applyImport(request, second, s.user, s.tenant);
     }
   }
-  if (head === "audit" && method === "GET") return listAudit(request);
+  if (head === "audit" && method === "GET") return listAudit(request, await tenantOf());
   if (head === "sync" && second === "batch" && method === "POST") {
     const s = await requireSessionOrThrow();
-    return syncBatch(request, s.user);
+    return syncBatch(request, s.user, await tenantOf());
   }
 
   // Belum dipetakan ke database: pakai mock supaya UI tetap berfungsi, dan

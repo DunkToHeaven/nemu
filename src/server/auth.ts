@@ -28,6 +28,12 @@ export interface AuthUser {
 export interface AuthSession {
   sessionId: string;
   user: AuthUser;
+  /**
+   * Organisasi pemilik sesi ini. Semua query data WAJIB memakai
+   * `tenantPool(session.tenant)` — bukan `sql` global — supaya tidak membaca
+   * gudang lain.
+   */
+  tenant: string;
 }
 
 const ROLE_RANK: Record<Role, number> = { worker: 1, supervisor: 2, admin: 3 };
@@ -36,12 +42,12 @@ export function hasAtLeast(role: Role, required: Role): boolean {
   return ROLE_RANK[role] >= ROLE_RANK[required];
 }
 
-export async function createSession(userId: string, role: Role): Promise<string> {
+export async function createSession(userId: string, role: Role, tenant: string): Promise<string> {
   const id = randomBytes(32).toString("base64url");
   const expires = new Date(Date.now() + SESSION_TTL_HOURS * 3_600_000);
   await sql`
-    INSERT INTO sessions (id, user_id, role, expires_at)
-    VALUES (${id}, ${userId}, ${role}, ${expires})
+    INSERT INTO sessions (id, user_id, role, tenant_slug, expires_at)
+    VALUES (${id}, ${userId}, ${role}, ${tenant}, ${expires})
   `;
   return id;
 }
@@ -60,10 +66,11 @@ export async function getSessionById(sessionId: string): Promise<AuthSession | n
       role: Role;
       email: string | null;
       shift_ends_at: string | null;
+      tenant_slug: string;
     }[]
   >`
     SELECT s.id AS session_id, u.id AS user_id, u.code, u.name, u.role,
-           u.email, u.shift_ends_at
+           u.email, u.shift_ends_at, s.tenant_slug
     FROM sessions s
     JOIN users u ON u.id = s.user_id
     WHERE s.id = ${sessionId}
@@ -77,6 +84,7 @@ export async function getSessionById(sessionId: string): Promise<AuthSession | n
 
   return {
     sessionId: row.session_id,
+    tenant: row.tenant_slug,
     user: {
       id: row.user_id,
       code: row.code,

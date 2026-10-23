@@ -82,13 +82,25 @@ export async function LandingView() {
             </p>
 
             <div className="flex flex-wrap gap-3">
+              {/* CTA utama mengarah ke pendaftaran: pengunjung harus bisa
+                  langsung mencoba, bukan hanya membaca cara kerjanya. */}
               <Button asChild size="lg">
-                <a href="#cara-kerja">{t("ctaDemo")}</a>
+                <Link href="/signup">{t("ctaDemo")}</Link>
               </Button>
               <Button asChild variant="secondary" size="lg">
-                <Link href="/docs">{t("ctaDocs")}</Link>
+                <a href="#cara-kerja">{t("ctaDocs")}</a>
               </Button>
             </div>
+
+            <p className="text-[13px] text-muted-foreground">
+              {t("alreadyHave")}{" "}
+              <Link
+                href="/login"
+                className="font-bold text-primary underline-offset-2 hover:underline"
+              >
+                {t("signIn")}
+              </Link>
+            </p>
 
             <ol className="flex flex-wrap gap-3" id="cara-kerja">
               {[t("step1Title"), t("step2Title"), t("step3Title")].map((title, index) => (

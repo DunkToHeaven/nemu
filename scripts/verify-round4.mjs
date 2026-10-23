@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { statSync } from "node:fs";
 /**
  * Uji empat perbaikan terbaru:
  *  1. Badge status tidak boleh berputar "Menyambung" selamanya
@@ -7,7 +8,6 @@
  *  4. Ada menu ekspor master data yang menghasilkan .xlsx
  */
 import { chromium } from "@playwright/test";
-import { statSync } from "node:fs";
 
 const BASE = process.env.BASE ?? "http://127.0.0.1:3100";
 let pass = 0;
@@ -38,8 +38,16 @@ await page.waitForTimeout(9000);
 const badge = page.getByTestId("connection-status").first();
 const state = await badge.getAttribute("data-state").catch(() => null);
 const label = (await badge.innerText().catch(() => "")).trim();
-check("tidak berputar di 'Menyambung' selamanya", state !== "connecting", `state=${state}, label="${label}"`);
-check("menampilkan status akhir yang jelas", ["live", "polling"].includes(state ?? ""), state ?? "-");
+check(
+  "tidak berputar di 'Menyambung' selamanya",
+  state !== "connecting",
+  `state=${state}, label="${label}"`,
+);
+check(
+  "menampilkan status akhir yang jelas",
+  ["live", "polling"].includes(state ?? ""),
+  state ?? "-",
+);
 
 console.log("\n== 2. TOMBOL TAMBAH BISA DIKLIK ==");
 const TABS = [
@@ -48,7 +56,7 @@ const TABS = [
   ["mesin", "/app/database/mesin", "add-equipment", null],
   ["pengguna", "/app/database/pengguna", "add-user", null],
 ];
-for (const [name, path, testId, extra] of TABS) {
+for (const [name, path, testId] of TABS) {
   await page.goto(`${BASE}${path}`, { waitUntil: "load" });
   await page.waitForTimeout(1500);
   const btn = page.getByTestId(testId).first();

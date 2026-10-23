@@ -6,7 +6,7 @@
  */
 import { z } from "zod";
 import type { AuthUser } from "@/server/auth";
-import { sql } from "@/server/db";
+import { tenantPool } from "@/server/db";
 import { errors, ok, parseBody, requireRole, requireSession } from "@/server/http";
 import { checkRateLimit, RATE_RULES } from "@/server/rate-limit";
 import { moveStock } from "@/server/services/stock";
@@ -15,15 +15,19 @@ const outcomeSchema = z.enum(["used", "returned", "damaged_lost"]);
 
 /* -------------------------------------------------------------- kustodi */
 
-export async function listCustody(request: Request, user: AuthUser): Promise<Response> {
-  await requireSession();
+export async function listCustody(
+  request: Request,
+  user: AuthUser,
+  tenant: string,
+): Promise<Response> {
+  const db = tenantPool(tenant);
   const url = new URL(request.url);
   const scope = url.searchParams.get("scope");
   // `scope=team` hanya supervisor+ (PRD).
   const team = scope === "team";
   if (team && user.role === "worker") throw errors.forbidden(user.role);
 
-  const rows = await sql<
+  const rows = await db<
     {
       id: string;
       item_id: string;
@@ -91,11 +95,12 @@ export async function settleCustody(
   request: Request,
   id: string,
   user: AuthUser,
+  tenant: string,
 ): Promise<Response> {
-  await requireSession();
+  const db = tenantPool(tenant);
   const body = await parseBody(request, settleSchema);
 
-  const rows = await sql<
+  const rows = await db<
     {
       id: string;
       item_id: string;
@@ -129,7 +134,7 @@ export async function settleCustody(
   }
 
   const txType = body.outcome === "returned" ? "return" : "issue";
-  const moved = await moveStock(user, {
+  const moved = await moveStock(user, tenant, {
     type: txType,
     itemId: entry.item_id,
     fromLocationId: body.outcome === "returned" ? null : entry.from_location_id,
@@ -150,7 +155,7 @@ export async function settleCustody(
 
   const newSettled = entry.qty_settled + body.qty;
   const fullySettled = newSettled >= entry.qty;
-  await sql`
+  await db`
     UPDATE custody SET qty_settled = ${newSettled},
       status = ${fullySettled ? "closed" : "open"},
       outcome = ${fullySettled ? body.outcome : null},
@@ -171,8 +176,11 @@ export async function settleCustody(
   });
 }
 
-export async function settleBatch(request: Request, user: AuthUser): Promise<Response> {
-  await requireSession();
+export async function settleBatch(
+  request: Request,
+  user: AuthUser,
+  tenant: string,
+): Promise<Response> {
   const body = await parseBody(
     request,
     z.object({
@@ -198,7 +206,7 @@ export async function settleBatch(request: Request, user: AuthUser): Promise<Res
           idempotencyKey: `batch-${entry.id}-${Date.now()}`,
         }),
       });
-      await settleCustody(fake, entry.id, user);
+      await settleCustody(fake, entry.id, user, tenant);
       results.push({ id: entry.id, ok: true, message: "ditutup" });
     } catch (error) {
       results.push({
@@ -214,8 +222,12 @@ export async function settleBatch(request: Request, user: AuthUser): Promise<Res
 
 /* ---------------------------------------------------------- verifikasi */
 
-export async function submitVerification(request: Request, user: AuthUser): Promise<Response> {
-  await requireSession();
+export async function submitVerification(
+  request: Request,
+  user: AuthUser,
+  tenant: string,
+): Promise<Response> {
+  const db = tenantPool(tenant);
   const limit = await checkRateLimit({
     bucket: `verify:${user.id}`,
     ...RATE_RULES.verification,
@@ -233,7 +245,7 @@ export async function submitVerification(request: Request, user: AuthUser): Prom
     }),
   );
 
-  const rows = await sql<
+  const rows = await db<
     { id: string; item_id: string; location_id: string; user_id: string; prompt_mode: string }[]
   >`
     SELECT id, item_id, location_id, user_id, prompt_mode::text AS prompt_mode
@@ -249,7 +261,7 @@ export async function submitVerification(request: Request, user: AuthUser): Prom
     throw errors.badRequest("Hasil 'mismatch' wajib menyertakan countedQty.");
   }
 
-  await sql`
+  await db`
     UPDATE verifications SET result = ${body.result},
       counted_qty = ${body.countedQty ?? null},
       status = ${body.result === "skipped" ? "recorded" : "recorded"},
@@ -259,7 +271,7 @@ export async function submitVerification(request: Request, user: AuthUser): Prom
 
   // Selisih masuk antrean supervisor untuk ditinjau, bukan langsung mengubah stok.
   if (body.result === "mismatch") {
-    await sql`UPDATE transactions SET review_status = 'needs_review'
+    await db`UPDATE transactions SET review_status = 'needs_review'
       WHERE item_id = ${prompt.item_id} AND id IN (
         SELECT opened_tx_id FROM custody WHERE item_id = ${prompt.item_id}
       )`.catch(() => undefined);
@@ -274,12 +286,12 @@ export async function submitVerification(request: Request, user: AuthUser): Prom
   });
 }
 
-export async function listVerifications(request: Request): Promise<Response> {
-  await requireRole("supervisor");
+export async function listVerifications(request: Request, tenant: string): Promise<Response> {
+  const db = tenantPool(tenant);
   const url = new URL(request.url);
   const status = url.searchParams.get("status") ?? "pending";
 
-  const rows = await sql<
+  const rows = await db<
     {
       id: string;
       item_id: string;
@@ -327,14 +339,15 @@ export async function reviewVerification(
   request: Request,
   id: string,
   user: AuthUser,
+  tenant: string,
 ): Promise<Response> {
-  await requireRole("supervisor");
+  const db = tenantPool(tenant);
   const body = await parseBody(
     request,
     z.object({ decision: z.enum(["approved", "rejected"]), note: z.string().max(500).optional() }),
   );
 
-  const rows = await sql<
+  const rows = await db<
     {
       id: string;
       item_id: string;
@@ -351,16 +364,16 @@ export async function reviewVerification(
     throw errors.badRequest("Alasan wajib diisi bila menolak selisih.");
   }
 
-  await sql`UPDATE verifications SET status = ${body.decision} WHERE id = ${id}`;
+  await db`UPDATE verifications SET status = ${body.decision} WHERE id = ${id}`;
 
   // Disetujui -> koreksi stok lewat transaksi `adjust`, bukan UPDATE saldo.
   if (body.decision === "approved" && v.counted_qty !== null) {
-    const current = await sql<{ qty: number }[]>`
+    const current = await db<{ qty: number }[]>`
       SELECT stock_at(${v.item_id}, ${v.location_id}) AS qty
     `;
     const diff = v.counted_qty - (current[0]?.qty ?? 0);
     if (diff !== 0) {
-      await moveStock(user, {
+      await moveStock(user, tenant, {
         type: "adjust",
         itemId: v.item_id,
         fromLocationId: diff < 0 ? v.location_id : null,
@@ -377,9 +390,9 @@ export async function reviewVerification(
 
 /* -------------------------------------------------------------- opname */
 
-export async function listCounts(): Promise<Response> {
-  await requireRole("supervisor");
-  const rows = await sql<
+export async function listCounts(tenant: string): Promise<Response> {
+  const db = tenantPool(tenant);
+  const rows = await db<
     {
       id: string;
       warehouse_id: string;
@@ -401,7 +414,7 @@ export async function listCounts(): Promise<Response> {
   const lines =
     ids.length === 0
       ? []
-      : await sql<
+      : await db<
           {
             id: string;
             count_id: string;
@@ -423,7 +436,7 @@ export async function listCounts(): Promise<Response> {
           JOIN items i ON i.id = l.item_id
           JOIN locations loc ON loc.id = l.location_id
           JOIN units un ON un.id = i.unit_id
-          WHERE l.count_id IN ${sql(ids)}
+          WHERE l.count_id IN ${db(ids)}
           ORDER BY loc.path, i.name
         `;
 
@@ -469,8 +482,12 @@ export async function listCounts(): Promise<Response> {
   });
 }
 
-export async function createCount(request: Request, user: AuthUser): Promise<Response> {
-  await requireRole("supervisor");
+export async function createCount(
+  request: Request,
+  user: AuthUser,
+  tenant: string,
+): Promise<Response> {
+  const db = tenantPool(tenant);
   const body = await parseBody(
     request,
     z.object({
@@ -481,18 +498,18 @@ export async function createCount(request: Request, user: AuthUser): Promise<Res
     }),
   );
 
-  const loc = await sql<{ warehouse_id: string }[]>`
+  const loc = await db<{ warehouse_id: string }[]>`
     SELECT warehouse_id FROM locations WHERE id = ${body.zoneId}
   `;
   const w = loc[0];
   if (!w) throw errors.badRequest("Zona tidak ditemukan.");
 
   const id = `cnt_${crypto.randomUUID().slice(0, 8)}`;
-  await sql`INSERT INTO stock_counts (id, warehouse_id, created_by)
+  await db`INSERT INTO stock_counts (id, warehouse_id, created_by)
     VALUES (${id}, ${w.warehouse_id}, ${user.id})`;
 
   // Baris opname dibuat dari saldo saat ini, disnapshot ke expected_qty.
-  await sql`
+  await db`
     INSERT INTO stock_count_lines (id, count_id, item_id, location_id, expected_qty)
     SELECT 'scl_' || gen_random_uuid()::text, ${id}, sl.item_id, sl.location_id, sl.qty
     FROM stock_levels sl
@@ -507,10 +524,11 @@ export async function setCountLine(
   request: Request,
   countId: string,
   lineId: string,
+  tenant: string,
 ): Promise<Response> {
-  await requireRole("supervisor");
+  const db = tenantPool(tenant);
   const body = await parseBody(request, z.object({ countedQty: z.number().int().min(0) }));
-  const rows = await sql<{ id: string }[]>`
+  const rows = await db<{ id: string }[]>`
     UPDATE stock_count_lines SET counted_qty = ${body.countedQty}
     WHERE id = ${lineId} AND count_id = ${countId} RETURNING id
   `;
@@ -522,10 +540,11 @@ export async function approveCount(
   request: Request,
   countId: string,
   user: AuthUser,
+  tenant: string,
 ): Promise<Response> {
-  await requireRole("supervisor");
+  const db = tenantPool(tenant);
 
-  const lines = await sql<
+  const lines = await db<
     {
       id: string;
       item_id: string;
@@ -545,7 +564,7 @@ export async function approveCount(
     const diff = line.counted_qty - line.expected_qty;
     if (diff === 0) continue;
     // Koreksi lewat transaksi, bukan UPDATE saldo — log tetap utuh.
-    await moveStock(user, {
+    await moveStock(user, tenant, {
       type: "adjust",
       itemId: line.item_id,
       fromLocationId: diff < 0 ? line.location_id : null,
@@ -557,7 +576,7 @@ export async function approveCount(
     adjusted += 1;
   }
 
-  await sql`UPDATE stock_counts SET status = 'approved', approved_by = ${user.id},
+  await db`UPDATE stock_counts SET status = 'approved', approved_by = ${user.id},
     approved_at = now() WHERE id = ${countId}`;
 
   return ok({ count: { id: countId, status: "approved" }, adjusted });

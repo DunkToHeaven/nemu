@@ -8,7 +8,8 @@
  */
 import { randomUUID } from "node:crypto";
 import type { AuthUser } from "@/server/auth";
-import { sql } from "@/server/db";
+import { tenantPool } from "@/server/db";
+import { tenantDb } from "@/server/http";
 
 export type TxType = "issue" | "return" | "receive" | "transfer" | "adjust";
 
@@ -34,10 +35,15 @@ export type IssueOutcome =
  * `duplicate` bukan kegagalan: kiriman ulang dengan idempotency key yang sama
  * mengembalikan hasil yang sama tanpa membuat transaksi kedua.
  */
-export async function issueStock(user: AuthUser, input: IssueInput): Promise<IssueOutcome> {
+export async function issueStock(
+  user: AuthUser,
+  tenant: string,
+  input: IssueInput,
+): Promise<IssueOutcome> {
   const txId = `tx_${randomUUID()}`;
+  const db = tenantPool(tenant);
 
-  const rows = await sql<{ ok: boolean; code: string; message: string; balance: number }[]>`
+  const rows = await db<{ ok: boolean; code: string; message: string; balance: number }[]>`
     SELECT * FROM issue_stock(
       ${txId}, ${input.itemId}, ${input.locationId}, ${input.qty},
       ${user.id}, ${input.idempotencyKey}, ${input.reasonId ?? null},
@@ -92,14 +98,16 @@ export interface MoveInput {
  */
 export async function moveStock(
   user: AuthUser,
+  tenant: string,
   input: MoveInput,
 ): Promise<
   { ok: true; txId: string; duplicate: boolean } | { ok: false; code: string; message: string }
 > {
   const txId = `tx_${randomUUID()}`;
+  const db = tenantPool(tenant);
 
   try {
-    const result = await sql.begin(async (tx) => {
+    const result = await db.begin(async (tx) => {
       // Idempotency lebih dulu: kiriman ulang tidak membuat baris baru.
       const existing = await tx<{ id: string }[]>`
         SELECT id FROM transactions
@@ -145,10 +153,12 @@ export async function moveStock(
  */
 export async function reverseTransaction(
   user: AuthUser,
+  tenant: string,
   txId: string,
   idempotencyKey: string,
 ): Promise<{ ok: true; reversalId: string } | { ok: false; code: string; message: string }> {
-  const rows = await sql<
+  const db = tenantPool(tenant);
+  const rows = await db<
     {
       id: string;
       type: TxType;
@@ -176,7 +186,7 @@ export async function reverseTransaction(
     }
   }
 
-  const already = await sql<{ id: string }[]>`
+  const already = await db<{ id: string }[]>`
     SELECT id FROM transactions WHERE reverses_id = ${txId}
   `;
   if (already.length > 0) {
@@ -200,7 +210,7 @@ export async function reverseTransaction(
     },
   }[original.type];
 
-  const result = await moveStock(user, {
+  const result = await moveStock(user, tenant, {
     type: flip.type,
     itemId: original.item_id,
     fromLocationId: flip.from,
@@ -214,7 +224,7 @@ export async function reverseTransaction(
   if (!result.ok) return result;
 
   // Tutup entri kustodi terkait supaya barang tidak "hilang" dari daftar dibawa.
-  await sql`
+  await db`
     UPDATE custody SET status = 'closed', outcome = 'returned', closed_at = now(),
       qty_settled = qty
     WHERE opened_tx_id = ${txId} AND status = 'open'

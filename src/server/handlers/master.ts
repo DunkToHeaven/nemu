@@ -4,34 +4,37 @@
  * Semua rute ini dipakai form di UI (dropdown alasan, pilih lokasi, dsb),
  * jadi bentuk responsnya harus persis seperti kontrak klien.
  */
+
+import type { Sql } from "postgres";
 import { z } from "zod";
 import { hashSecret } from "@/server/crypto";
-import { sql } from "@/server/db";
+import { sql, tenantPool } from "@/server/db";
 import { errors, ok, parseBody, requireRole, requireSession } from "@/server/http";
 
 const roleSchema = z.enum(["worker", "supervisor", "admin"]);
 
 /* ------------------------------------------------------------------ meta */
 
-export async function getMeta(): Promise<Response> {
-  await requireSession();
+export async function getMeta(tenant: string): Promise<Response> {
+  const session = await requireSession();
+  const db = tenantPool(session.tenant);
 
-  const warehouses = await sql<{ id: string; code: string; name: string }[]>`
+  const warehouses = await db<{ id: string; code: string; name: string }[]>`
     SELECT id, code, name FROM warehouses WHERE active ORDER BY name
   `;
-  const categories = await sql<{ id: string; name: string; active: boolean }[]>`
+  const categories = await db<{ id: string; name: string; active: boolean }[]>`
     SELECT id, name, true AS active FROM categories ORDER BY name
   `;
-  const units = await sql<{ id: string; name: string; symbol: string; decimals: number }[]>`
+  const units = await db<{ id: string; name: string; symbol: string; decimals: number }[]>`
     SELECT id, name, symbol, decimals FROM units ORDER BY name
   `;
-  const reasons = await sql<{ id: string; name: string; requires_wo: boolean; active: boolean }[]>`
+  const reasons = await db<{ id: string; name: string; requires_wo: boolean; active: boolean }[]>`
     SELECT id, name, requires_wo, active FROM reasons WHERE active ORDER BY name
   `;
-  const equipment = await sql<{ id: string; code: string; name: string; active: boolean }[]>`
+  const equipment = await db<{ id: string; code: string; name: string; active: boolean }[]>`
     SELECT id, code, name, active FROM equipment WHERE active ORDER BY name
   `;
-  const locations = await sql<
+  const locations = await db<
     { id: string; name: string; path: string; type: string }[]
   >`SELECT id, name, path, type FROM locations WHERE active ORDER BY path`;
 
@@ -52,8 +55,9 @@ export async function getMeta(): Promise<Response> {
 
 /* -------------------------------------------------------------- lokasi */
 
-export async function listLocations(request: Request): Promise<Response> {
-  await requireSession();
+export async function listLocations(request: Request, tenant: string): Promise<Response> {
+  const session = await requireSession();
+  const db = tenantPool(session.tenant);
   const url = new URL(request.url);
   const warehouseId = url.searchParams.get("warehouseId");
   const type = url.searchParams.get("type");
@@ -61,7 +65,7 @@ export async function listLocations(request: Request): Promise<Response> {
 
   // itemCount & totalQty dihitung di database, bukan di klien: dengan 300 item
   // dan puluhan lokasi, menghitung di JS akan mengirim data yang tidak perlu.
-  const rows = await sql<
+  const rows = await db<
     {
       id: string;
       warehouse_id: string;
@@ -116,8 +120,9 @@ const locationSchema = z.object({
   active: z.boolean().default(true),
 });
 
-export async function createLocation(request: Request): Promise<Response> {
+export async function createLocation(request: Request, tenant: string): Promise<Response> {
   const session = await requireRole("admin");
+  const db = tenantPool(session.tenant);
   const body = await parseBody(request, locationSchema);
 
   // Path dibangun dari induk supaya hierarki konsisten dan tidak bisa dipalsukan.
@@ -125,7 +130,7 @@ export async function createLocation(request: Request): Promise<Response> {
   let path: string;
 
   if (body.parentId) {
-    const parent = await sql<{ id: string; warehouse_id: string; path: string }[]>`
+    const parent = await db<{ id: string; warehouse_id: string; path: string }[]>`
       SELECT id, warehouse_id, path FROM locations WHERE id = ${body.parentId}
     `;
     const p = parent[0];
@@ -133,7 +138,7 @@ export async function createLocation(request: Request): Promise<Response> {
     warehouseId = p.warehouse_id;
     path = `${p.path} › ${body.name}`;
   } else {
-    const wh = await sql<{ id: string }[]>`SELECT id FROM warehouses ORDER BY name LIMIT 1`;
+    const wh = await db<{ id: string }[]>`SELECT id FROM warehouses ORDER BY name LIMIT 1`;
     const first = wh[0];
     if (!first) throw errors.badRequest("Belum ada gudang.");
     warehouseId = first.id;
@@ -142,7 +147,7 @@ export async function createLocation(request: Request): Promise<Response> {
 
   const id = `loc_${crypto.randomUUID().slice(0, 8)}`;
   try {
-    await sql`
+    await db`
       INSERT INTO locations (id, warehouse_id, parent_id, code, name, type, path, active)
       VALUES (${id}, ${warehouseId}, ${body.parentId}, ${body.code}, ${body.name},
               ${body.type}, ${path}, ${body.active})
@@ -151,7 +156,7 @@ export async function createLocation(request: Request): Promise<Response> {
     throw errors.conflict("LOCATION_DUPLICATE", "Kode lokasi sudah dipakai di gudang ini.");
   }
 
-  await audit(session.user.id, "location", id, "create", null, { name: body.name });
+  await audit(db, session.user.id, "location", id, "create", null, { name: body.name });
   return ok(
     {
       location: {
@@ -169,11 +174,16 @@ export async function createLocation(request: Request): Promise<Response> {
   );
 }
 
-export async function updateLocation(request: Request, id: string): Promise<Response> {
+export async function updateLocation(
+  request: Request,
+  id: string,
+  tenant: string,
+): Promise<Response> {
   const session = await requireRole("admin");
+  const db = tenantPool(session.tenant);
   const body = await parseBody(request, locationSchema.partial());
 
-  const before = await sql<{ id: string; name: string; path: string; code: string }[]>`
+  const before = await db<{ id: string; name: string; path: string; code: string }[]>`
     SELECT id, name, path, code FROM locations WHERE id = ${id}
   `;
   const current = before[0];
@@ -187,21 +197,22 @@ export async function updateLocation(request: Request, id: string): Promise<Resp
       ? current.path
       : current.path.replace(new RegExp(`${escapeRegex(current.name)}$`), name);
 
-  await sql`
+  await db`
     UPDATE locations SET name = ${name}, code = ${code}, path = ${newPath},
       active = ${body.active ?? true}, updated_at = now()
     WHERE id = ${id}
   `;
 
-  await audit(session.user.id, "location", id, "update", current, { name, code });
+  await audit(db, session.user.id, "location", id, "update", current, { name, code });
   return ok({ location: { id, name, code, path: newPath, active: body.active ?? true } });
 }
 
 /* ------------------------------------------------------- kategori & unit */
 
-export async function listCategories(): Promise<Response> {
-  await requireSession();
-  const rows = await sql<{ id: string; name: string; item_count: number }[]>`
+export async function listCategories(tenant: string): Promise<Response> {
+  const session = await requireSession();
+  const db = tenantPool(session.tenant);
+  const rows = await db<{ id: string; name: string; item_count: number }[]>`
     SELECT c.id, c.name, COALESCE(i.cnt, 0)::int AS item_count
     FROM categories c
     LEFT JOIN LATERAL (SELECT count(*) AS cnt FROM items WHERE category_id = c.id) i ON true
@@ -213,36 +224,43 @@ export async function listCategories(): Promise<Response> {
   });
 }
 
-export async function upsertCategory(request: Request, id?: string): Promise<Response> {
+export async function upsertCategory(
+  request: Request,
+  tenant: string,
+  id?: string,
+): Promise<Response> {
   const session = await requireRole("admin");
+  const db = tenantPool(session.tenant);
   const body = await parseBody(request, z.object({ name: z.string().trim().min(1).max(80) }));
 
   if (id) {
-    await sql`UPDATE categories SET name = ${body.name} WHERE id = ${id}`;
-    await audit(session.user.id, "category", id, "update", null, body);
+    await db`UPDATE categories SET name = ${body.name} WHERE id = ${id}`;
+    await audit(db, session.user.id, "category", id, "update", null, body);
     return ok({ category: { id, name: body.name, active: true } });
   }
 
   const newId = `cat_${crypto.randomUUID().slice(0, 8)}`;
   try {
-    await sql`INSERT INTO categories (id, name) VALUES (${newId}, ${body.name})`;
+    await db`INSERT INTO categories (id, name) VALUES (${newId}, ${body.name})`;
   } catch {
     throw errors.conflict("CATEGORY_DUPLICATE", "Nama kategori sudah ada.");
   }
-  await audit(session.user.id, "category", newId, "create", null, body);
+  await audit(db, session.user.id, "category", newId, "create", null, body);
   return ok({ category: { id: newId, name: body.name, active: true } }, { status: 201 });
 }
 
-export async function listUnits(): Promise<Response> {
-  await requireSession();
-  const rows = await sql<{ id: string; name: string; symbol: string; decimals: number }[]>`
+export async function listUnits(tenant: string): Promise<Response> {
+  const session = await requireSession();
+  const db = tenantPool(session.tenant);
+  const rows = await db<{ id: string; name: string; symbol: string; decimals: number }[]>`
     SELECT id, name, symbol, decimals FROM units ORDER BY name
   `;
   return ok({ data: rows, total: rows.length });
 }
 
-export async function upsertUnit(request: Request, id?: string): Promise<Response> {
+export async function upsertUnit(request: Request, tenant: string, id?: string): Promise<Response> {
   const session = await requireRole("admin");
+  const db = tenantPool(session.tenant);
   const body = await parseBody(
     request,
     z.object({
@@ -253,30 +271,31 @@ export async function upsertUnit(request: Request, id?: string): Promise<Respons
   );
 
   if (id) {
-    await sql`UPDATE units SET name = ${body.name}, symbol = ${body.symbol},
+    await db`UPDATE units SET name = ${body.name}, symbol = ${body.symbol},
       decimals = ${body.decimals} WHERE id = ${id}`;
-    await audit(session.user.id, "unit", id, "update", null, body);
+    await audit(db, session.user.id, "unit", id, "update", null, body);
     return ok({ unit: { id, ...body } });
   }
 
   const newId = `un_${crypto.randomUUID().slice(0, 8)}`;
   try {
-    await sql`INSERT INTO units (id, name, symbol, decimals)
+    await db`INSERT INTO units (id, name, symbol, decimals)
       VALUES (${newId}, ${body.name}, ${body.symbol}, ${body.decimals})`;
   } catch {
     throw errors.conflict("UNIT_DUPLICATE", "Simbol satuan sudah ada.");
   }
-  await audit(session.user.id, "unit", newId, "create", null, body);
+  await audit(db, session.user.id, "unit", newId, "create", null, body);
   return ok({ unit: { id: newId, ...body } }, { status: 201 });
 }
 
 /* --------------------------------------------------------------- alasan */
 
-export async function listReasons(request: Request): Promise<Response> {
-  await requireSession();
+export async function listReasons(request: Request, tenant: string): Promise<Response> {
+  const session = await requireSession();
+  const db = tenantPool(session.tenant);
   const url = new URL(request.url);
   const all = url.searchParams.get("all") === "1";
-  const rows = await sql<
+  const rows = await db<
     { id: string; name: string; requires_wo: boolean; requires_note: boolean; active: boolean }[]
   >`
     SELECT id, name, requires_wo, requires_note, active FROM reasons
@@ -294,8 +313,13 @@ export async function listReasons(request: Request): Promise<Response> {
   });
 }
 
-export async function upsertReason(request: Request, id?: string): Promise<Response> {
+export async function upsertReason(
+  request: Request,
+  tenant: string,
+  id?: string,
+): Promise<Response> {
   const session = await requireRole("admin");
+  const db = tenantPool(session.tenant);
   const body = await parseBody(
     request,
     z.object({
@@ -306,7 +330,7 @@ export async function upsertReason(request: Request, id?: string): Promise<Respo
   );
 
   if (id) {
-    const cur = await sql<{ name: string; requires_wo: boolean; active: boolean }[]>`
+    const cur = await db<{ name: string; requires_wo: boolean; active: boolean }[]>`
       SELECT name, requires_wo, active FROM reasons WHERE id = ${id}
     `;
     const c = cur[0];
@@ -314,21 +338,21 @@ export async function upsertReason(request: Request, id?: string): Promise<Respo
     const name = body.name ?? c.name;
     const requiresWo = body.requiresWo ?? c.requires_wo;
     const active = body.active ?? c.active;
-    await sql`UPDATE reasons SET name = ${name}, requires_wo = ${requiresWo}, active = ${active}
+    await db`UPDATE reasons SET name = ${name}, requires_wo = ${requiresWo}, active = ${active}
       WHERE id = ${id}`;
-    await audit(session.user.id, "reason", id, "update", c, body);
+    await audit(db, session.user.id, "reason", id, "update", c, body);
     return ok({ reason: { id, name, requiresWo, active } });
   }
 
   if (!body.name) throw errors.badRequest("Nama alasan wajib diisi.");
   const newId = `rs_${crypto.randomUUID().slice(0, 8)}`;
   try {
-    await sql`INSERT INTO reasons (id, name, requires_wo, active)
+    await db`INSERT INTO reasons (id, name, requires_wo, active)
       VALUES (${newId}, ${body.name}, ${body.requiresWo ?? false}, ${body.active ?? true})`;
   } catch {
     throw errors.conflict("REASON_DUPLICATE", "Nama alasan sudah ada.");
   }
-  await audit(session.user.id, "reason", newId, "create", null, body);
+  await audit(db, session.user.id, "reason", newId, "create", null, body);
   return ok(
     { reason: { id: newId, name: body.name, requiresWo: body.requiresWo ?? false, active: true } },
     { status: 201 },
@@ -337,9 +361,10 @@ export async function upsertReason(request: Request, id?: string): Promise<Respo
 
 /* --------------------------------------------------------------- mesin */
 
-export async function listEquipment(): Promise<Response> {
-  await requireSession();
-  const rows = await sql<{ id: string; code: string; name: string; active: boolean }[]>`
+export async function listEquipment(tenant: string): Promise<Response> {
+  const session = await requireSession();
+  const db = tenantPool(session.tenant);
+  const rows = await db<{ id: string; code: string; name: string; active: boolean }[]>`
     SELECT id, code, name, active FROM equipment ORDER BY name
   `;
   return ok({
@@ -348,8 +373,13 @@ export async function listEquipment(): Promise<Response> {
   });
 }
 
-export async function upsertEquipment(request: Request, id?: string): Promise<Response> {
+export async function upsertEquipment(
+  request: Request,
+  tenant: string,
+  id?: string,
+): Promise<Response> {
   const session = await requireRole("admin");
+  const db = tenantPool(session.tenant);
   const body = await parseBody(
     request,
     z.object({
@@ -360,7 +390,7 @@ export async function upsertEquipment(request: Request, id?: string): Promise<Re
   );
 
   if (id) {
-    const cur = await sql<{ code: string; name: string; active: boolean }[]>`
+    const cur = await db<{ code: string; name: string; active: boolean }[]>`
       SELECT code, name, active FROM equipment WHERE id = ${id}
     `;
     const c = cur[0];
@@ -368,21 +398,21 @@ export async function upsertEquipment(request: Request, id?: string): Promise<Re
     const code = body.code ?? c.code;
     const name = body.name ?? c.name;
     const active = body.active ?? c.active;
-    await sql`UPDATE equipment SET code = ${code}, name = ${name}, active = ${active}
+    await db`UPDATE equipment SET code = ${code}, name = ${name}, active = ${active}
       WHERE id = ${id}`;
-    await audit(session.user.id, "equipment", id, "update", c, body);
+    await audit(db, session.user.id, "equipment", id, "update", c, body);
     return ok({ equipment: { id, code, name, locationId: null, active } });
   }
 
   if (!body.code || !body.name) throw errors.badRequest("Kode dan nama mesin wajib diisi.");
   const newId = `eq_${crypto.randomUUID().slice(0, 8)}`;
   try {
-    await sql`INSERT INTO equipment (id, code, name, active)
+    await db`INSERT INTO equipment (id, code, name, active)
       VALUES (${newId}, ${body.code}, ${body.name}, ${body.active ?? true})`;
   } catch {
     throw errors.conflict("EQUIPMENT_DUPLICATE", "Kode mesin sudah ada.");
   }
-  await audit(session.user.id, "equipment", newId, "create", null, body);
+  await audit(db, session.user.id, "equipment", newId, "create", null, body);
   return ok(
     { equipment: { id: newId, code: body.code, name: body.name, locationId: null, active: true } },
     { status: 201 },
@@ -391,7 +421,7 @@ export async function upsertEquipment(request: Request, id?: string): Promise<Re
 
 /* ------------------------------------------------------------ pengguna */
 
-export async function listUsers(): Promise<Response> {
+export async function listUsers(tenant: string): Promise<Response> {
   await requireRole("admin");
   const rows = await sql<
     {
@@ -407,7 +437,7 @@ export async function listUsers(): Promise<Response> {
     }[]
   >`
     SELECT id, code, name, role, email, active, shift_ends_at, last_login_at, created_at
-    FROM users ORDER BY role, name
+    FROM users WHERE tenant_slug = ${tenant} ORDER BY role, name
   `;
   return ok({
     data: rows.map((r) => ({
@@ -425,7 +455,7 @@ export async function listUsers(): Promise<Response> {
   });
 }
 
-export async function createUser(request: Request): Promise<Response> {
+export async function createUser(request: Request, tenant: string): Promise<Response> {
   const session = await requireRole("admin");
   const body = await parseBody(
     request,
@@ -445,16 +475,20 @@ export async function createUser(request: Request): Promise<Response> {
 
   try {
     await sql`
-      INSERT INTO users (id, code, name, role, email, pin_hash, password_hash, shift_ends_at)
+      INSERT INTO users (id, code, name, role, email, pin_hash, password_hash,
+                         shift_ends_at, tenant_slug)
       VALUES (${id}, ${body.code.toUpperCase()}, ${body.name}, ${body.role},
               ${body.email ?? null}, ${pinHash}, ${passwordHash},
-              ${body.role === "worker" ? "16:00" : null})
+              ${body.role === "worker" ? "16:00" : null}, ${tenant})
     `;
   } catch {
     throw errors.conflict("USER_DUPLICATE", "Kode atau email pengguna sudah dipakai.");
   }
 
-  await audit(session.user.id, "user", id, "create", null, { code: body.code, role: body.role });
+  await audit(sql, session.user.id, "user", id, "create", null, {
+    code: body.code,
+    role: body.role,
+  });
   return ok(
     {
       user: {
@@ -474,7 +508,7 @@ export async function createUser(request: Request): Promise<Response> {
   );
 }
 
-export async function updateUser(request: Request, id: string): Promise<Response> {
+export async function updateUser(request: Request, id: string, tenant: string): Promise<Response> {
   const session = await requireRole("admin");
   const body = await parseBody(
     request,
@@ -513,7 +547,7 @@ export async function updateUser(request: Request, id: string): Promise<Response
   await sql`UPDATE users SET name = ${name}, role = ${role}, email = ${email},
     active = ${active}, updated_at = now() WHERE id = ${id}`;
 
-  await audit(session.user.id, "user", id, "update", c, body);
+  await audit(sql, session.user.id, "user", id, "update", c, body);
   return ok({
     user: { id, name, role, email, active },
     ...(initialPin ? { initialPin } : {}),
@@ -522,11 +556,12 @@ export async function updateUser(request: Request, id: string): Promise<Response
 
 /* ---------------------------------------------------------------- audit */
 
-export async function listAudit(request: Request): Promise<Response> {
+export async function listAudit(request: Request, tenant: string): Promise<Response> {
   await requireRole("admin");
   const url = new URL(request.url);
   const entity = url.searchParams.get("entity");
-  const rows = await sql<
+  const db = tenantPool(tenant);
+  const rows = await db<
     {
       id: string;
       entity: string;
@@ -570,6 +605,7 @@ function escapeRegex(value: string): string {
 }
 
 export async function audit(
+  db: Sql,
   actorId: string,
   entity: string,
   entityId: string,
@@ -577,10 +613,10 @@ export async function audit(
   before: unknown,
   after: unknown,
 ) {
-  await sql`
+  await db`
     INSERT INTO audit_log (entity, entity_id, action, before, after, actor_id, source)
     VALUES (${entity}, ${entityId}, ${action},
-            ${before ? sql.json(before as never) : null},
-            ${after ? sql.json(after as never) : null}, ${actorId}, 'dashboard')
+            ${before ? db.json(before as never) : null},
+            ${after ? db.json(after as never) : null}, ${actorId}, 'dashboard')
   `;
 }

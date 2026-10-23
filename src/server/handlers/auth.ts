@@ -60,10 +60,31 @@ export async function handleLogin(request: Request): Promise<Response> {
   let userId: string;
   let role: Role;
 
+  let tenant: string;
+
   if (body.mode === "pin") {
+    // Kode login unik per tenant, jadi satu kode bisa ada di beberapa gudang.
+    // Login PIN tanpa nama gudang memilih tenant aktif pertama yang cocok;
+    // bila sebuah kode dipakai di lebih dari satu gudang, pemiliknya harus
+    // memakai email+password agar tidak ambigu.
     const rows = await sql<
-      { id: string; role: Role; pin_hash: string | null; active: boolean }[]
-    >`SELECT id, role, pin_hash, active FROM users WHERE upper(code) = ${body.code.toUpperCase()}`;
+      {
+        id: string;
+        role: Role;
+        pin_hash: string | null;
+        active: boolean;
+        tenant_slug: string | null;
+        matches: number;
+      }[]
+    >`
+      SELECT u.id, u.role, u.pin_hash, u.active, u.tenant_slug,
+             (SELECT count(*)::int FROM users u2
+               WHERE upper(u2.code) = ${body.code.toUpperCase()} AND u2.active) AS matches
+      FROM users u
+      WHERE upper(u.code) = ${body.code.toUpperCase()} AND u.active
+      ORDER BY u.created_at
+      LIMIT 1
+    `;
     const user = rows[0];
     // Pesan error netral: tidak membocorkan apakah kode ada atau PIN salah.
     // Kodenya INVALID_CREDENTIALS agar UI bisa menampilkan sisa percobaan.
@@ -72,19 +93,33 @@ export async function handleLogin(request: Request): Promise<Response> {
     }
     userId = user.id;
     role = user.role;
+    tenant = user.tenant_slug ?? "";
   } else {
     const rows = await sql<
-      { id: string; role: Role; password_hash: string | null; active: boolean }[]
-    >`SELECT id, role, password_hash, active FROM users WHERE lower(email) = ${body.email.toLowerCase()}`;
+      {
+        id: string;
+        role: Role;
+        password_hash: string | null;
+        active: boolean;
+        tenant_slug: string | null;
+      }[]
+    >`SELECT id, role, password_hash, active, tenant_slug
+      FROM users WHERE lower(email) = ${body.email.toLowerCase()} AND active LIMIT 1`;
     const user = rows[0];
     if (!user || !user.active || !(await verifySecret(body.password, user.password_hash))) {
       throw errors.invalidCredentials(idLimit.remaining);
     }
     userId = user.id;
     role = user.role;
+    tenant = user.tenant_slug ?? "";
   }
 
-  const sessionId = await createSession(userId, role);
+  // Akun tanpa organisasi tidak boleh masuk: datanya tidak akan ditemukan.
+  if (!tenant) {
+    throw errors.badRequest("Akun ini belum terhubung ke organisasi mana pun.");
+  }
+
+  const sessionId = await createSession(userId, role, tenant);
   await sql`UPDATE users SET last_login_at = now() WHERE id = ${userId}`;
 
   const me = await sql<

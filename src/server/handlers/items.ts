@@ -5,9 +5,11 @@
  * satu query per permintaan. Pola N+1 (loop item lalu query stok masing-masing)
  * dihindari karena dashboard memuat 20-50 baris sekaligus.
  */
+
+import type { Sql } from "postgres";
 import { z } from "zod";
 import { itemWriteSchema } from "@/lib/api/schemas";
-import { sql } from "@/server/db";
+import { sql, tenantPool } from "@/server/db";
 import { errors, ok, paginate, parseBody, requireRole, requireSession } from "@/server/http";
 
 interface ItemRow {
@@ -66,7 +68,8 @@ function confidenceFor(lastVerifiedAt: Date | null, verifyCount: number) {
 }
 
 export async function searchItems(request: Request): Promise<Response> {
-  await requireSession();
+  const session = await requireSession();
+  const db = tenantPool(session.tenant);
   const started = Date.now();
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
@@ -75,7 +78,7 @@ export async function searchItems(request: Request): Promise<Response> {
 
   // Cari berdasarkan nama/SKU/kode. ILIKE dipakai untuk substring; untuk
   // dataset besar ini bisa diganti full-text index `items_search_idx`.
-  const rows = await sql<
+  const rows = await db<
     (ItemRow & {
       loc_id: string | null;
       loc_qty: number | null;
@@ -116,7 +119,7 @@ export async function searchItems(request: Request): Promise<Response> {
   // Ambil semua level stok untuk baris yang lolos filter, sekali jalan.
   const ids = rows.map((r) => r.id);
   const levels = ids.length
-    ? await sql<
+    ? await db<
         {
           item_id: string;
           location_id: string;
@@ -169,7 +172,7 @@ export async function searchItems(request: Request): Promise<Response> {
   // Unit diambil sekali untuk semua baris (menghindari N+1).
   const unitIds = [...new Set(rows.map((r) => r.unit_id))];
   const unitRows = unitIds.length
-    ? await sql<{ id: string; name: string; symbol: string; decimals: number }[]>`
+    ? await db<{ id: string; name: string; symbol: string; decimals: number }[]>`
         SELECT id, name, symbol, decimals FROM units WHERE id IN ${sql(unitIds)}
       `
     : [];
@@ -208,9 +211,10 @@ export async function searchItems(request: Request): Promise<Response> {
 }
 
 export async function itemByCode(request: Request, code: string): Promise<Response> {
-  await requireSession();
+  const session = await requireSession();
+  const db = tenantPool(session.tenant);
 
-  const rows = await sql<(ItemRow & { last_verified: Date | null; verify_count: number })[]>`
+  const rows = await db<(ItemRow & { last_verified: Date | null; verify_count: number })[]>`
     SELECT i.*, v.last_verified, COALESCE(v.verify_count, 0)::int AS verify_count
     FROM items i
     LEFT JOIN LATERAL (
@@ -227,7 +231,7 @@ export async function itemByCode(request: Request, code: string): Promise<Respon
 
   // Satu query untuk semua level + lokasi lengkap. Klien membutuhkan objek
   // `location` utuh (bukan hanya path), jadi kolomnya diambil sekalian.
-  const levels = await sql<
+  const levels = await db<
     {
       location_id: string;
       qty: number;
@@ -257,13 +261,13 @@ export async function itemByCode(request: Request, code: string): Promise<Respon
     ORDER BY lc.path
   `;
 
-  const unitRows = await sql<{ id: string; name: string; symbol: string; decimals: number }[]>`
+  const unitRows = await db<{ id: string; name: string; symbol: string; decimals: number }[]>`
     SELECT id, name, symbol, decimals FROM units WHERE id = ${row.unit_id}
   `;
-  const categoryRows = await sql<{ id: string; name: string; active: boolean }[]>`
+  const categoryRows = await db<{ id: string; name: string; active: boolean }[]>`
     SELECT id, name, true AS active FROM categories WHERE id = ${row.category_id}
   `;
-  const primaryRows = await sql<
+  const primaryRows = await db<
     {
       id: string;
       warehouse_id: string;
@@ -301,13 +305,13 @@ export async function itemByCode(request: Request, code: string): Promise<Respon
     })),
     totalQty,
     // Berapa yang sedang dibawa orang lain — dipakai UI untuk peringatan.
-    takenByOthers: await custodyOpenQty(row.id),
+    takenByOthers: await custodyOpenQty(db, row.id),
   });
 }
 
 /** Qty item yang sedang dibawa pengguna lain (belum diselesaikan). */
-async function custodyOpenQty(itemId: string): Promise<number> {
-  const rows = await sql<{ qty: number }[]>`
+async function custodyOpenQty(db: Sql, itemId: string): Promise<number> {
+  const rows = await db<{ qty: number }[]>`
     SELECT COALESCE(SUM(qty - qty_settled), 0)::int AS qty
     FROM custody WHERE item_id = ${itemId} AND status = 'open'
   `;
@@ -339,14 +343,15 @@ function toLocation(row: {
 }
 
 export async function listItems(request: Request): Promise<Response> {
-  await requireRole("supervisor");
+  const session = await requireRole("supervisor");
+  const db = tenantPool(session.tenant);
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 100) || 100));
   const cursor = url.searchParams.get("cursor");
   const includeInactive = url.searchParams.get("all") === "1";
 
-  const rows = await sql<ItemRow[]>`
+  const rows = await db<ItemRow[]>`
     SELECT * FROM items
     WHERE (${includeInactive} OR active)
       AND (${q} = '' OR name ILIKE ${`%${q}%`} OR sku ILIKE ${`%${q}%`})
@@ -354,7 +359,7 @@ export async function listItems(request: Request): Promise<Response> {
     LIMIT 1000
   `;
 
-  const totals = await sql<{ item_id: string; qty: number }[]>`
+  const totals = await db<{ item_id: string; qty: number }[]>`
     SELECT item_id, SUM(qty)::int AS qty FROM stock_levels GROUP BY item_id
   `;
   const totalByItem = new Map(totals.map((t) => [t.item_id, t.qty]));
@@ -370,13 +375,14 @@ export async function listItems(request: Request): Promise<Response> {
 
 export async function createItem(request: Request): Promise<Response> {
   const session = await requireRole("admin");
+  const db = tenantPool(session.tenant);
   const body = await parseBody(request, itemWriteSchema);
 
   const id = `itm_${crypto.randomUUID().slice(0, 8)}`;
   // Kode QR dibuat di server, bukan klien: harus unik dan tidak bisa dipalsukan.
   const code = generateItemCode();
 
-  await sql`
+  await db`
     INSERT INTO items (id, sku, code, name, category_id, unit_id, min_stock,
       unit_value, is_bulk, primary_location_id)
     VALUES (${id}, ${body.sku}, ${code}, ${body.name}, ${body.categoryId}, ${body.unitId},
@@ -384,18 +390,19 @@ export async function createItem(request: Request): Promise<Response> {
             ${body.primaryLocationId ?? null})
   `;
 
-  await audit(session.user.id, "item", id, "create", null, { sku: body.sku, name: body.name });
+  await audit(db, session.user.id, "item", id, "create", null, { sku: body.sku, name: body.name });
   return ok({ item: { id, code } }, { status: 201 });
 }
 
 export async function updateItem(request: Request, id: string): Promise<Response> {
   const session = await requireRole("admin");
+  const db = tenantPool(session.tenant);
   const body = await parseBody(request, itemWriteSchema.partial());
 
-  const before = await sql<ItemRow[]>`SELECT * FROM items WHERE id = ${id}`;
+  const before = await db<ItemRow[]>`SELECT * FROM items WHERE id = ${id}`;
   if (!before[0]) throw errors.notFound("Item");
 
-  await sql`
+  await db`
     UPDATE items SET
       name = ${body.name ?? before[0].name},
       sku = ${body.sku ?? before[0].sku},
@@ -408,11 +415,12 @@ export async function updateItem(request: Request, id: string): Promise<Response
     WHERE id = ${id}
   `;
 
-  await audit(session.user.id, "item", id, "update", toItem(before[0]), body);
+  await audit(db, session.user.id, "item", id, "update", toItem(before[0]), body);
   return ok({ item: { id } });
 }
 
 async function audit(
+  db: Sql,
   actorId: string,
   entity: string,
   entityId: string,
@@ -420,10 +428,10 @@ async function audit(
   before: unknown,
   after: unknown,
 ) {
-  await sql`
+  await db`
     INSERT INTO audit_log (entity, entity_id, action, before, after, actor_id, source)
-    VALUES (${entity}, ${entityId}, ${action}, ${before ? sql.json(before as never) : null},
-            ${after ? sql.json(after as never) : null}, ${actorId}, 'dashboard')
+    VALUES (${entity}, ${entityId}, ${action}, ${before ? db.json(before as never) : null},
+            ${after ? db.json(after as never) : null}, ${actorId}, 'dashboard')
   `;
 }
 
@@ -441,11 +449,12 @@ export const bulkItemSchema = z.object({
 
 export async function bulkItems(request: Request): Promise<Response> {
   const session = await requireRole("admin");
+  const db = tenantPool(session.tenant);
   const body = await parseBody(request, bulkItemSchema);
 
   if (body.action === "delete") {
     // Hapus permanen ditolak bila item punya riwayat transaksi — log harus utuh.
-    const used = await sql<{ count: number }[]>`
+    const used = await db<{ count: number }[]>`
       SELECT count(*)::int AS count FROM transactions WHERE item_id IN ${sql(body.ids)}
     `;
     if ((used[0]?.count ?? 0) > 0) {
@@ -454,12 +463,12 @@ export async function bulkItems(request: Request): Promise<Response> {
         "Item yang punya riwayat transaksi tidak boleh dihapus; nonaktifkan saja.",
       );
     }
-    await sql`DELETE FROM items WHERE id IN ${sql(body.ids)}`;
+    await db`DELETE FROM items WHERE id IN ${sql(body.ids)}`;
   } else {
-    await sql`UPDATE items SET active = ${body.action === "activate"}, updated_at = now()
+    await db`UPDATE items SET active = ${body.action === "activate"}, updated_at = now()
       WHERE id IN ${sql(body.ids)}`;
   }
 
-  await audit(session.user.id, "item", body.ids.join(","), "update", null, body);
+  await audit(db, session.user.id, "item", body.ids.join(","), "update", null, body);
   return ok({ ok: true, affected: body.ids.length });
 }

@@ -105,6 +105,19 @@ export async function requireRole(required: Role): Promise<AuthSession> {
   return session;
 }
 
+/**
+ * Koneksi database untuk organisasi pada sesi ini.
+ *
+ * SEMUA handler data harus memakai ini, bukan `sql` global. `sql` hanya untuk
+ * tabel lintas-tenant (tenants/users/sessions). Memakai `sql` untuk tabel
+ * aplikasi berarti membaca schema `public` — di mana tabel itu sudah tidak ada
+ * — atau, lebih buruk, membocorkan data organisasi lain bila search_path salah.
+ */
+export async function tenantDb(session: AuthSession) {
+  const { tenantPool } = await import("@/server/db");
+  return tenantPool(session.tenant);
+}
+
 /** Validasi body JSON dengan skema Zod. */
 export async function parseBody<T>(
   request: Request,

@@ -243,7 +243,13 @@ export function LoginCard({
                 {serverError}
               </p>
             ) : null}
-            <Button type="submit" size="lg" block disabled={mutation.isPending}>
+            <Button
+              type="submit"
+              size="lg"
+              block
+              disabled={mutation.isPending}
+              data-testid="submit-login-email"
+            >
               {mutation.isPending ? t("submitting") : t("submit")}
             </Button>
           </form>

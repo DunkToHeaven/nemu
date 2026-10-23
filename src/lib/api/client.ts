@@ -187,6 +187,15 @@ export const api = {
       request<{ user: SessionUser }>("auth/session").then((r) =>
         parse(sessionUserSchema, r.user, "session"),
       ),
+    /**
+     * Pendaftaran organisasi baru. Server membuat schema database sendiri untuk
+     * organisasi ini dan langsung menerbitkan sesi admin.
+     */
+    signup: (input: { orgName: string; name: string; email: string; password: string }) =>
+      request<{ user: SessionUser; tenant: { slug: string; name: string }; redirectTo: string }>(
+        "auth/signup",
+        { method: "POST", body: input },
+      ),
     login: (input: LoginInput) =>
       request<{ user: SessionUser; redirectTo: string }>("auth/login", {
         method: "POST",

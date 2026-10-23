@@ -3,16 +3,16 @@
  */
 import { z } from "zod";
 import type { AuthUser } from "@/server/auth";
-import { sql } from "@/server/db";
+import { tenantPool } from "@/server/db";
 import { audit } from "@/server/handlers/master";
 import { errors, ok, parseBody, requireRole, requireSession } from "@/server/http";
 import { issueStock, moveStock } from "@/server/services/stock";
 
 /* ----------------------------------------------------------- pengaturan */
 
-export async function getSettings(): Promise<Response> {
-  await requireRole("admin");
-  const rows = await sql<
+export async function getSettings(tenant: string): Promise<Response> {
+  const db = tenantPool(tenant);
+  const rows = await db<
     {
       org_name: string;
       timezone: string;
@@ -75,17 +75,21 @@ const settingsPatch = z.object({
     .optional(),
 });
 
-export async function updateSettings(request: Request, user: AuthUser): Promise<Response> {
-  await requireRole("admin");
+export async function updateSettings(
+  request: Request,
+  user: AuthUser,
+  tenant: string,
+): Promise<Response> {
+  const db = tenantPool(tenant);
   const body = await parseBody(request, settingsPatch);
 
-  const cur = await sql<{ org_name: string; timezone: string; locale: string }[]>`
+  const cur = await db<{ org_name: string; timezone: string; locale: string }[]>`
     SELECT org_name, timezone, locale FROM settings WHERE id
   `;
   const c = cur[0];
   if (!c) throw errors.notFound("Pengaturan");
 
-  await sql`
+  await db`
     UPDATE settings SET
       org_name = ${body.orgName ?? c.org_name},
       timezone = ${body.timezone ?? c.timezone},
@@ -101,15 +105,15 @@ export async function updateSettings(request: Request, user: AuthUser): Promise<
     WHERE id
   `;
 
-  await audit(user.id, "settings", "org", "update", c, body);
-  return getSettings();
+  await audit(db, user.id, "settings", "org", "update", c, body);
+  return getSettings(tenant);
 }
 
 /* ------------------------------------------------------ integrasi Google */
 
-export async function getGoogle(): Promise<Response> {
-  await requireRole("admin");
-  const rows = await sql<
+export async function getGoogle(tenant: string): Promise<Response> {
+  const db = tenantPool(tenant);
+  const rows = await db<
     {
       connected: boolean;
       account_email: string | null;
@@ -131,7 +135,7 @@ export async function getGoogle(): Promise<Response> {
     FROM google_integration WHERE id
   `;
   const g = rows[0];
-  const runs = await sql<
+  const runs = await db<
     {
       id: string;
       action: string;
@@ -178,12 +182,16 @@ export async function getGoogle(): Promise<Response> {
  * OAuth sungguhan — kredensial Google belum dikonfigurasi. Statusnya ditandai
  * jelas di pesan supaya tidak dikira sudah tersambung nyata.
  */
-export async function googleAction(action: string, user: AuthUser): Promise<Response> {
-  await requireRole("admin");
+export async function googleAction(
+  action: string,
+  user: AuthUser,
+  tenant: string,
+): Promise<Response> {
+  const db = tenantPool(tenant);
   const runId = `run_${crypto.randomUUID().slice(0, 8)}`;
 
   if (action === "connect") {
-    await sql`
+    await db`
       UPDATE google_integration SET
         connected = true, account_email = 'gudang@nemu.local',
         folder_name = 'Nemu - ' || (SELECT org_name FROM settings WHERE id),
@@ -193,45 +201,45 @@ export async function googleAction(action: string, user: AuthUser): Promise<Resp
         protected_ranges = 0, scopes = ARRAY['drive.file'], updated_at = now()
       WHERE id
     `;
-    await sql`INSERT INTO sync_runs (id, action, status, rows_sent, message, finished_at)
+    await db`INSERT INTO sync_runs (id, action, status, rows_sent, message, finished_at)
       VALUES (${runId}, 'connect', 'sent', 0, 'simulasi', now())`;
-    await audit(user.id, "integration", "google", "update", null, { connected: true });
+    await audit(db, user.id, "integration", "google", "update", null, { connected: true });
   } else if (action === "check") {
-    await sql`UPDATE google_integration SET check_status = 'warning',
+    await db`UPDATE google_integration SET check_status = 'warning',
       check_message = 'SIMULASI: skema tidak diperiksa karena tidak ada spreadsheet nyata.',
       updated_at = now() WHERE id`;
-    await sql`INSERT INTO sync_runs (id, action, status, rows_sent, message, finished_at)
+    await db`INSERT INTO sync_runs (id, action, status, rows_sent, message, finished_at)
       VALUES (${runId}, 'check', 'sent', 0, 'simulasi', now())`;
   } else if (action === "repair") {
-    await sql`UPDATE google_integration SET protected_ranges = 0, check_status = 'warning',
+    await db`UPDATE google_integration SET protected_ranges = 0, check_status = 'warning',
       check_message = 'SIMULASI: tidak ada yang diperbaiki.', updated_at = now() WHERE id`;
-    await sql`INSERT INTO sync_runs (id, action, status, rows_sent, message, finished_at)
+    await db`INSERT INTO sync_runs (id, action, status, rows_sent, message, finished_at)
       VALUES (${runId}, 'repair', 'sent', 0, 'simulasi', now())`;
   } else if (action === "sync") {
     // Outbox belum dikirim ke mana pun; hitung yang tertunda supaya angkanya jujur.
-    const pending = await sql<{ count: number }[]>`
+    const pending = await db<{ count: number }[]>`
       SELECT count(*)::int AS count FROM outbox WHERE status = 'pending'
     `;
-    await sql`INSERT INTO sync_runs (id, action, status, rows_sent, message, finished_at)
+    await db`INSERT INTO sync_runs (id, action, status, rows_sent, message, finished_at)
       VALUES (${runId}, 'sync', 'failed', 0,
               ${`SIMULASI: ${pending[0]?.count ?? 0} baris tertunda, tidak dikirim (worker belum ada)`},
               now())`;
   } else if (action === "disconnect") {
-    await sql`UPDATE google_integration SET connected = false, token_ciphertext = NULL,
+    await db`UPDATE google_integration SET connected = false, token_ciphertext = NULL,
       check_status = 'unknown', check_message = NULL, updated_at = now() WHERE id`;
-    await audit(user.id, "integration", "google", "update", null, { connected: false });
+    await audit(db, user.id, "integration", "google", "update", null, { connected: false });
   } else {
     throw errors.badRequest(`Aksi tidak dikenal: ${action}`);
   }
 
-  return getGoogle();
+  return getGoogle(tenant);
 }
 
 /* --------------------------------------------------------------- impor */
 
-export async function listImports(): Promise<Response> {
-  await requireRole("admin");
-  const rows = await sql<
+export async function listImports(tenant: string): Promise<Response> {
+  const db = tenantPool(tenant);
+  const rows = await db<
     { id: string; filename: string; status: string; summary: unknown; created_at: Date }[]
   >`SELECT id, filename, status::text AS status, summary, created_at
       FROM import_jobs ORDER BY created_at DESC LIMIT 50`;
@@ -250,8 +258,12 @@ export async function listImports(): Promise<Response> {
  * Pratinjau impor (dry-run). Belum menulis apa pun — hanya memvalidasi baris
  * dan mengembalikan daftar ditolak beserta alasannya (PRD MD-03).
  */
-export async function previewImport(request: Request, user: AuthUser): Promise<Response> {
-  await requireRole("admin");
+export async function previewImport(
+  request: Request,
+  user: AuthUser,
+  tenant: string,
+): Promise<Response> {
+  const db = tenantPool(tenant);
   const body = await parseBody(
     request,
     z.object({
@@ -262,10 +274,10 @@ export async function previewImport(request: Request, user: AuthUser): Promise<R
   );
 
   const existingSkus = new Set(
-    (await sql<{ sku: string }[]>`SELECT sku FROM items`).map((r) => r.sku),
+    (await db<{ sku: string }[]>`SELECT sku FROM items`).map((r) => r.sku),
   );
   const existingCats = new Set(
-    (await sql<{ name: string }[]>`SELECT name FROM categories`).map((r) => r.name.toLowerCase()),
+    (await db<{ name: string }[]>`SELECT name FROM categories`).map((r) => r.name.toLowerCase()),
   );
 
   const rejected: { row: number; reason: string }[] = [];
@@ -294,9 +306,9 @@ export async function previewImport(request: Request, user: AuthUser): Promise<R
   });
 
   const id = `imp_${crypto.randomUUID().slice(0, 8)}`;
-  await sql`INSERT INTO import_jobs (id, filename, status, rows, summary, created_by)
-    VALUES (${id}, ${body.filename}, 'preview', ${sql.json(body.rows as never)},
-            ${sql.json({ entity: body.entity, accepted: accepted.length, rejected } as never)},
+  await db`INSERT INTO import_jobs (id, filename, status, rows, summary, created_by)
+    VALUES (${id}, ${body.filename}, 'preview', ${db.json(body.rows as never)},
+            ${db.json({ entity: body.entity, accepted: accepted.length, rejected } as never)},
             ${user.id})`;
 
   return ok(
@@ -313,9 +325,14 @@ export async function previewImport(request: Request, user: AuthUser): Promise<R
   );
 }
 
-export async function applyImport(request: Request, id: string, user: AuthUser): Promise<Response> {
-  await requireRole("admin");
-  const rows = await sql<{ rows: Record<string, string>[]; summary: unknown; status: string }[]>`
+export async function applyImport(
+  request: Request,
+  id: string,
+  user: AuthUser,
+  tenant: string,
+): Promise<Response> {
+  const db = tenantPool(tenant);
+  const rows = await db<{ rows: Record<string, string>[]; summary: unknown; status: string }[]>`
     SELECT rows, summary, status::text AS status FROM import_jobs WHERE id = ${id}
   `;
   const job = rows[0];
@@ -335,7 +352,7 @@ export async function applyImport(request: Request, id: string, user: AuthUser):
       const name = (row.name ?? "").trim();
       if (!name) continue;
       const newId = `cat_${crypto.randomUUID().slice(0, 8)}`;
-      await sql`INSERT INTO categories (id, name) VALUES (${newId}, ${name})
+      await db`INSERT INTO categories (id, name) VALUES (${newId}, ${name})
         ON CONFLICT (name) DO NOTHING`;
       created += 1;
     } else if (summary.entity === "items") {
@@ -345,20 +362,20 @@ export async function applyImport(request: Request, id: string, user: AuthUser):
 
       const catName = (row.category ?? "Consumable").trim();
       const catId = `cat_${catName.toLowerCase().replace(/\s+/g, "-")}`;
-      await sql`INSERT INTO categories (id, name) VALUES (${catId}, ${catName})
+      await db`INSERT INTO categories (id, name) VALUES (${catId}, ${catName})
         ON CONFLICT (name) DO NOTHING`;
 
       const unitSymbol = (row.unit ?? "pcs").trim();
-      const unitRow = await sql<{ id: string }[]>`
+      const unitRow = await db<{ id: string }[]>`
         SELECT id FROM units WHERE symbol = ${unitSymbol} LIMIT 1
       `;
       const unitId = unitRow[0]?.id ?? "un_pcs";
 
-      const existing = await sql<{ id: string }[]>`
+      const existing = await db<{ id: string }[]>`
         SELECT id FROM items WHERE sku = ${sku}
       `;
       if (existing[0]) {
-        await sql`UPDATE items SET name = ${name}, category_id = ${catId},
+        await db`UPDATE items SET name = ${name}, category_id = ${catId},
           min_stock = ${Number(row.minStock ?? 0) || 0}, updated_at = now()
           WHERE id = ${existing[0].id}`;
         updated += 1;
@@ -366,7 +383,7 @@ export async function applyImport(request: Request, id: string, user: AuthUser):
         const code = Array.from(crypto.getRandomValues(new Uint8Array(9)))
           .map((b) => "0123456789ABCDEFGHJKMNPQRSTVWXYZ"[b % 32])
           .join("");
-        await sql`INSERT INTO items (id, sku, code, name, category_id, unit_id, min_stock)
+        await db`INSERT INTO items (id, sku, code, name, category_id, unit_id, min_stock)
           VALUES (${`itm_${crypto.randomUUID().slice(0, 8)}`}, ${sku}, ${code}, ${name},
                   ${catId}, ${unitId}, ${Number(row.minStock ?? 0) || 0})`;
         created += 1;
@@ -374,16 +391,19 @@ export async function applyImport(request: Request, id: string, user: AuthUser):
     }
   }
 
-  await sql`UPDATE import_jobs SET status = 'applied', applied_at = now() WHERE id = ${id}`;
-  await audit(user.id, "import", id, "update", null, { created, updated });
+  await db`UPDATE import_jobs SET status = 'applied', applied_at = now() WHERE id = ${id}`;
+  await audit(db, user.id, "import", id, "update", null, { created, updated });
 
   return ok({ job: { id, status: "applied" }, created, updated });
 }
 
 /* ------------------------------------------------------ sync offline */
 
-export async function syncBatch(request: Request, user: AuthUser): Promise<Response> {
-  await requireSession();
+export async function syncBatch(
+  request: Request,
+  user: AuthUser,
+  tenant: string,
+): Promise<Response> {
   const body = await parseBody(
     request,
     z.object({
@@ -417,7 +437,7 @@ export async function syncBatch(request: Request, user: AuthUser): Promise<Respo
   for (const tx of body.transactions) {
     try {
       if (tx.type === "issue") {
-        const r = await issueStock(user, {
+        const r = await issueStock(user, tenant, {
           itemId: tx.itemId,
           locationId: tx.locationId ?? tx.fromLocationId ?? "",
           qty: tx.qty,
@@ -441,7 +461,7 @@ export async function syncBatch(request: Request, user: AuthUser): Promise<Respo
               },
         );
       } else {
-        const r = await moveStock(user, {
+        const r = await moveStock(user, tenant, {
           type: tx.type,
           itemId: tx.itemId,
           fromLocationId: tx.fromLocationId ?? null,
@@ -488,9 +508,9 @@ export async function syncBatch(request: Request, user: AuthUser): Promise<Respo
 
 /* --------------------------------------------------------------- event */
 
-export async function getEvents(): Promise<Response> {
-  await requireSession();
-  const rows = await sql<
+export async function getEvents(tenant: string): Promise<Response> {
+  const db = tenantPool(tenant);
+  const rows = await db<
     {
       id: string;
       type: string;
