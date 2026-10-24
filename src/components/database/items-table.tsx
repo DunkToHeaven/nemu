@@ -314,11 +314,14 @@ function ItemSheet({
   const locale = useLocale();
   const queryClient = useQueryClient();
   const [minStock, setMinStock] = React.useState("");
+  const [maxStock, setMaxStock] = React.useState("");
   const [name, setName] = React.useState("");
 
   React.useEffect(() => {
     if (!item) return;
     setMinStock(String(item.minStock));
+    // max_stock nullable: kosong berarti tidak ada plafon, bukan nol.
+    setMaxStock(item.maxStock === null || item.maxStock === undefined ? "" : String(item.maxStock));
     setName(item.name);
   }, [item]);
 
@@ -329,7 +332,14 @@ function ItemSheet({
   });
 
   const save = useMutation({
-    mutationFn: () => api.items.update(item!.id, { name: name.trim(), minStock: Number(minStock) }),
+    mutationFn: () =>
+      api.items.update(item!.id, {
+        name: name.trim(),
+        minStock: Number(minStock),
+        // String kosong -> null (tanpa plafon). Number("") === 0 akan salah
+        // menandai item sebagai kelebihan stok di laporan.
+        maxStock: maxStock.trim() === "" ? null : Number(maxStock),
+      }),
     onSuccess: () => {
       toast.success(t("saved"));
       void queryClient.invalidateQueries({ queryKey: ["items"] });
@@ -355,7 +365,11 @@ function ItemSheet({
               <Badge tone={item.active ? "success" : "neutral"}>
                 {item.active ? t("activeLabel") : "—"}
               </Badge>
-              <ConfidenceBadge confidence={item.confidence} showScore />
+              {/* `confidence` tidak dikirim pada daftar item (mahal dihitung per
+                  baris). Tanpa penjaga ini, membuka detail item melempar
+                  "Cannot read properties of undefined (reading 'level')" dan
+                  seluruh halaman gagal dimuat. */}
+              {item.confidence ? <ConfidenceBadge confidence={item.confidence} showScore /> : null}
               <Badge tone="neutral">
                 {formatQty(item.totalQty, locale)} {item.unit?.symbol}
               </Badge>
@@ -390,6 +404,23 @@ function ItemSheet({
                   disabled={!canEdit}
                 />
               </div>
+              <div className="space-y-1.5">
+                <label htmlFor="item-max" className="text-[13px] font-bold">
+                  {t("maxStockLabel")}
+                </label>
+                <Input
+                  id="item-max"
+                  type="number"
+                  min={0}
+                  placeholder="—"
+                  value={maxStock}
+                  onChange={(event) => setMaxStock(event.target.value)}
+                  disabled={!canEdit}
+                />
+              </div>
+              <p className="rounded-xl bg-muted px-3 py-2 text-2xs leading-relaxed text-muted-foreground">
+                {t("stockRangeHint")}
+              </p>
               <div className="rounded-xl border border-border p-3 text-[13px]">
                 <p className="text-2xs font-bold uppercase tracking-wide text-muted-foreground">
                   {t("locationLabel")}

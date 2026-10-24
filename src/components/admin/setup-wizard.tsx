@@ -46,7 +46,6 @@ export function SetupWizard() {
     queryFn: () => api.master.locations(),
   });
   const users = useQuery({ queryKey: keys.users, queryFn: () => api.master.users() });
-  const google = useQuery({ queryKey: keys.google, queryFn: () => api.admin.google() });
 
   React.useEffect(() => {
     if (settings.data?.settings.orgName) setOrgName(settings.data.settings.orgName);
@@ -65,13 +64,7 @@ export function SetupWizard() {
     onError: (error) => toast.error(error instanceof ApiError ? error.message : t("orgError")),
   });
 
-  if (
-    settings.isLoading ||
-    items.isLoading ||
-    locations.isLoading ||
-    users.isLoading ||
-    google.isLoading
-  ) {
+  if (settings.isLoading || items.isLoading || locations.isLoading || users.isLoading) {
     return <ListSkeleton rows={6} />;
   }
   if (settings.isError) return <ErrorState onRetry={() => void settings.refetch()} />;
@@ -79,7 +72,6 @@ export function SetupWizard() {
   const itemCount = items.data?.total ?? 0;
   const locationCount = locations.data?.data.length ?? 0;
   const hasAdmin = (users.data?.data ?? []).some((user) => user.role === "admin" && user.active);
-  const googleConnected = google.data?.integration.connected ?? false;
   const labelsPrinted =
     typeof window !== "undefined" && window.localStorage.getItem("nemu.labels.printed") === "1";
 
@@ -119,16 +111,6 @@ export function SetupWizard() {
       href: "/app/database/label",
       icon: "print",
       done: labelsPrinted,
-      optional: true,
-    },
-    {
-      id: "google",
-      titleKey: "stepGoogleTitle",
-      bodyKey: "stepGoogleBody",
-      ctaKey: "stepGoogleCta",
-      href: "/admin/integrations/google",
-      icon: "cloud",
-      done: googleConnected,
       optional: true,
     },
   ];

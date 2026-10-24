@@ -65,6 +65,8 @@ export const itemSchema = z.object({
   categoryId: z.string(),
   unitId: z.string(),
   minStock: z.number(),
+  /** Batas atas stok wajar; null bila tidak dibatasi. */
+  maxStock: z.number().nullable(),
   unitValue: z.number().nullable(),
   isBulk: z.boolean(),
   primaryLocationId: z.string().nullable(),
@@ -276,6 +278,11 @@ export const itemWriteSchema = z.object({
   categoryId: z.string().min(1),
   unitId: z.string().min(1),
   minStock: z.number().min(0).max(1_000_000),
+  /**
+   * Batas atas stok wajar. Opsional dan boleh null: banyak item memang tidak
+   * punya plafon. Dipakai laporan untuk menandai kelebihan stok.
+   */
+  maxStock: z.number().min(0).max(1_000_000).nullable().optional(),
   // Opsional: form buat item tidak menanyakan harga satuan. Sebelumnya field ini
   // wajib sehingga setiap pembuatan item gagal 400 "Data tidak valid" — tombol
   // Simpan tampak tidak bereaksi.

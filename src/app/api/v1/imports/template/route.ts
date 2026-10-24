@@ -40,6 +40,12 @@ const COLUMNS: Record<
       note: "Angka bulat, batas stok minimum.",
     },
     {
+      header: "max_stock",
+      example: "200",
+      required: false,
+      note: "Angka bulat, batas stok maksimum. Kosongkan bila tidak dibatasi.",
+    },
+    {
       header: "location",
       example: "Gudang 1/Zona B/Rak B-03",
       required: false,

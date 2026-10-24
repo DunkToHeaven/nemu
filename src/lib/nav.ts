@@ -27,12 +27,6 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { href: "/admin/setup", labelKey: "nav.setup", icon: "checkCircle", required: "admin" },
   { href: "/admin/settings", labelKey: "nav.settings", icon: "settings", required: "admin" },
-  {
-    href: "/admin/integrations/google",
-    labelKey: "nav.integrations",
-    icon: "cloud",
-    required: "admin",
-  },
   { href: "/admin/audit", labelKey: "nav.audit", icon: "shield", required: "admin" },
 ];
 

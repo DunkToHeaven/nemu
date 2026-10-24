@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import * as React from "react";
 import { toast } from "sonner";
@@ -44,6 +45,23 @@ export function LocationsTable() {
     type: "rack" as LocationRow["type"],
     parentId: "",
   });
+
+  /**
+   * Dukung tautan `?new=1&type=zone` dari halaman Opname.
+   *
+   * Opname dihitung per zona. Sebelumnya pengguna yang tiba dari Opname tanpa
+   * punya zona hanya melihat dropdown kosong tanpa jalan keluar; sekarang
+   * Opname mengarah ke sini dan form langsung terbuka dengan tipe terpilih.
+   */
+  const params = useSearchParams();
+  React.useEffect(() => {
+    if (params?.get("new") !== "1") return;
+    const wanted = params.get("type");
+    if (wanted === "warehouse" || wanted === "zone" || wanted === "rack" || wanted === "bin") {
+      setForm((prev) => ({ ...prev, type: wanted }));
+    }
+    setNewOpen(true);
+  }, [params]);
 
   const all = useQuery({
     queryKey: keys.locations({ q: "" }),

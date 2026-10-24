@@ -9,7 +9,15 @@ import type { Role, SessionUser } from "@/lib/types";
 
 interface SessionContextValue {
   user: SessionUser | null;
-  role: Role;
+  /**
+   * Peran pengguna, atau `null` bila sesi belum termuat.
+   *
+   * JANGAN memberi nilai default "worker": saat sesi masih dimuat, UI akan
+   * merender tampilan pekerja lebih dulu (menu admin hilang) dan bagi admin
+   * itu terlihat seperti "saya bukan admin". Pemakai `role` harus menangani
+   * `null` sebagai "belum tahu", bukan "pekerja".
+   */
+  role: Role | null;
   isLoading: boolean;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
@@ -53,7 +61,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const value = React.useMemo<SessionContextValue>(
     () => ({
       user: data ?? null,
-      role: data?.role ?? "worker",
+      role: data?.role ?? null,
       isLoading,
       refresh,
       logout,

@@ -13,7 +13,7 @@ export function MenuPage() {
   const t = useTranslations();
   const locale = useLocale();
   const { user, role, logout } = useSession();
-  const items = navForRole(role);
+  const items = navForRole(role ?? "worker");
 
   return (
     <div className="mx-auto max-w-lg space-y-4">

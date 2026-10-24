@@ -9,7 +9,7 @@
 
 import type { AuthUser } from "@/server/auth";
 import { tenantPool } from "@/server/db";
-import { ok, requireRole, requireSession, tenantDb } from "@/server/http";
+import { ok } from "@/server/http";
 
 const DAY = 86_400_000;
 
@@ -66,8 +66,6 @@ export async function getDashboard(user: AuthUser, tenant: string): Promise<Resp
       (SELECT count(*)::int FROM verifications
          WHERE status = 'pending' AND user_id = ${user.id}) AS my_queue
   `;
-
-  const t = totals[0];
 
   // 10 transaksi terakhir. Untuk pekerja dibatasi miliknya sendiri.
   const scoped = user.role === "worker";
@@ -182,6 +180,11 @@ export async function getDashboard(user: AuthUser, tenant: string): Promise<Resp
       )
     ORDER BY COALESCE(s.qty, 0) DESC LIMIT 5
   `;
+
+  /**
+   * Query dijalankan BERURUTAN — lihat catatan di `getReports`.
+   */
+  const t = totals[0];
 
   const custodyRows = await db<
     { id: string; item_id: string; item_name: string; qty: number; opened_at: Date; unit: string }[]
@@ -405,9 +408,6 @@ export async function getReports(request: Request, tenant: string): Promise<Resp
     WHERE i.active
     GROUP BY 1
   `;
-  const confMap = new Map(conf.map((c) => [c.bucket, c.count]));
-  const confTotal = conf.reduce((sum, c) => sum + c.count, 0);
-
   const deadStock = await db<
     { item_id: string; name: string; last_moved_at: Date | null; qty: number; days_idle: number }[]
   >`
@@ -443,10 +443,111 @@ export async function getReports(request: Request, tenant: string): Promise<Resp
     GROUP BY e.id, e.name ORDER BY tx DESC LIMIT 10
   `;
 
+  /**
+   * Ringkasan kesehatan persediaan.
+   *
+   * Sebelumnya laporan hanya menampilkan distribusi confidence (tinggi/sedang/
+   * rendah) — itu menilai KETELITIAN catatan, bukan kondisi stok. Yang dicari
+   * pemilik gudang adalah: berapa item di bawah minimum, berapa kelebihan,
+   * berapa nilai yang menganggur, dan berapa yang belum pernah dihitung.
+   */
+  const health = await db<
+    {
+      total: number;
+      below_min: number;
+      over_max: number;
+      healthy: number;
+      no_min: number;
+      never_counted: number;
+      stock_value: string;
+      dead_value: string;
+      dead_count: number;
+      zero_stock: number;
+    }[]
+  >`
+    WITH per_item AS (
+      SELECT i.id, i.name, i.min_stock, i.max_stock, i.unit_value,
+             COALESCE((SELECT SUM(qty) FROM stock_levels WHERE item_id = i.id), 0)::int AS qty,
+             (SELECT max(answered_at) FROM verifications v
+               WHERE v.item_id = i.id AND v.status IN ('recorded','approved')) AS last_counted,
+             (SELECT max(created_at) FROM transactions t WHERE t.item_id = i.id) AS last_moved
+      FROM items i WHERE i.active
+    )
+    SELECT count(*)::int AS total,
+           count(*) FILTER (WHERE min_stock > 0 AND qty < min_stock)::int AS below_min,
+           count(*) FILTER (WHERE max_stock IS NOT NULL AND qty > max_stock)::int AS over_max,
+           count(*) FILTER (
+             WHERE (min_stock = 0 OR qty >= min_stock)
+               AND (max_stock IS NULL OR qty <= max_stock)
+           )::int AS healthy,
+           count(*) FILTER (WHERE min_stock = 0 AND max_stock IS NULL)::int AS no_min,
+           count(*) FILTER (WHERE last_counted IS NULL)::int AS never_counted,
+           COALESCE(SUM(qty * COALESCE(unit_value, 0)), 0)::text AS stock_value,
+           COALESCE(SUM(CASE WHEN qty > 0
+             AND (last_moved IS NULL OR last_moved < now() - interval '60 days')
+             THEN qty * COALESCE(unit_value, 0) ELSE 0 END), 0)::text AS dead_value,
+           count(*) FILTER (WHERE qty > 0
+             AND (last_moved IS NULL OR last_moved < now() - interval '60 days'))::int AS dead_count,
+           count(*) FILTER (WHERE qty = 0)::int AS zero_stock
+    FROM per_item
+  `;
+  // Sebaran umur pencatatan: menunjukkan seberapa usang data, bukan hanya
+  // "berapa yang belum pernah dihitung".
+  const ageBuckets = await db<{ bucket: string; count: number }[]>`
+    SELECT CASE
+             WHEN v.last_counted IS NULL THEN 'never'
+             WHEN v.last_counted > now() - interval '30 days' THEN 'd30'
+             WHEN v.last_counted > now() - interval '90 days' THEN 'd90'
+             WHEN v.last_counted > now() - interval '180 days' THEN 'd180'
+             ELSE 'older'
+           END AS bucket,
+           count(*)::int AS count
+    FROM items i
+    LEFT JOIN LATERAL (
+      SELECT max(answered_at) AS last_counted FROM verifications
+      WHERE item_id = i.id AND status IN ('recorded','approved')
+    ) v ON true
+    WHERE i.active
+    GROUP BY 1
+  `;
+
+  /**
+   * Query dijalankan BERURUTAN, bukan paralel.
+   *
+   * Paralel pernah dicoba dan justru merusak: Supavisor (pooler Supabase)
+   * menjenuhkan seluruh slot pool saat belasan query diminta serentak, lalu satu
+   * query yang tersangkut membuat SEMUA permintaan menggantung (terbukti: satu
+   * `DISTINCT ON` macet 3 menit 53 detik). Berurutan ~95 ms per query — sekitar
+   * satu detik total — dan tidak pernah macet.
+   */
+
+  const h = health[0];
+  const ageMap = new Map(ageBuckets.map((b) => [b.bucket, b.count]));
+  const confMap = new Map(conf.map((c) => [c.bucket, c.count]));
+  const confTotal = conf.reduce((sum, c) => sum + c.count, 0);
   const cs = custodyStats[0];
 
   return ok({
     rangeDays: days,
+    inventoryHealth: {
+      total: h?.total ?? 0,
+      belowMin: h?.below_min ?? 0,
+      overMax: h?.over_max ?? 0,
+      healthy: h?.healthy ?? 0,
+      noThreshold: h?.no_min ?? 0,
+      neverCounted: h?.never_counted ?? 0,
+      zeroStock: h?.zero_stock ?? 0,
+      stockValue: Number(h?.stock_value ?? 0),
+      deadValue: Number(h?.dead_value ?? 0),
+      deadCount: h?.dead_count ?? 0,
+      ageBuckets: {
+        d30: ageMap.get("d30") ?? 0,
+        d90: ageMap.get("d90") ?? 0,
+        d180: ageMap.get("d180") ?? 0,
+        older: ageMap.get("older") ?? 0,
+        never: ageMap.get("never") ?? 0,
+      },
+    },
     trend,
     topItems,
     byUser,

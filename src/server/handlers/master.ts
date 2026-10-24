@@ -9,15 +9,14 @@ import type { Sql } from "postgres";
 import { z } from "zod";
 import { hashSecret } from "@/server/crypto";
 import { sql, tenantPool } from "@/server/db";
-import { errors, ok, parseBody, requireRole, requireSession } from "@/server/http";
+import { errors, ok, parseBody, requireRole } from "@/server/http";
 
 const roleSchema = z.enum(["worker", "supervisor", "admin"]);
 
 /* ------------------------------------------------------------------ meta */
 
 export async function getMeta(tenant: string): Promise<Response> {
-  const session = await requireSession();
-  const db = tenantPool(session.tenant);
+  const db = tenantPool(tenant);
 
   const warehouses = await db<{ id: string; code: string; name: string }[]>`
     SELECT id, code, name FROM warehouses WHERE active ORDER BY name
@@ -56,8 +55,7 @@ export async function getMeta(tenant: string): Promise<Response> {
 /* -------------------------------------------------------------- lokasi */
 
 export async function listLocations(request: Request, tenant: string): Promise<Response> {
-  const session = await requireSession();
-  const db = tenantPool(session.tenant);
+  const db = tenantPool(tenant);
   const url = new URL(request.url);
   const warehouseId = url.searchParams.get("warehouseId");
   const type = url.searchParams.get("type");
@@ -122,7 +120,7 @@ const locationSchema = z.object({
 
 export async function createLocation(request: Request, tenant: string): Promise<Response> {
   const session = await requireRole("admin");
-  const db = tenantPool(session.tenant);
+  const db = tenantPool(tenant);
   const body = await parseBody(request, locationSchema);
 
   // Path dibangun dari induk supaya hierarki konsisten dan tidak bisa dipalsukan.
@@ -180,7 +178,7 @@ export async function updateLocation(
   tenant: string,
 ): Promise<Response> {
   const session = await requireRole("admin");
-  const db = tenantPool(session.tenant);
+  const db = tenantPool(tenant);
   const body = await parseBody(request, locationSchema.partial());
 
   const before = await db<{ id: string; name: string; path: string; code: string }[]>`
@@ -210,8 +208,7 @@ export async function updateLocation(
 /* ------------------------------------------------------- kategori & unit */
 
 export async function listCategories(tenant: string): Promise<Response> {
-  const session = await requireSession();
-  const db = tenantPool(session.tenant);
+  const db = tenantPool(tenant);
   const rows = await db<{ id: string; name: string; item_count: number }[]>`
     SELECT c.id, c.name, COALESCE(i.cnt, 0)::int AS item_count
     FROM categories c
@@ -230,7 +227,7 @@ export async function upsertCategory(
   id?: string,
 ): Promise<Response> {
   const session = await requireRole("admin");
-  const db = tenantPool(session.tenant);
+  const db = tenantPool(tenant);
   const body = await parseBody(request, z.object({ name: z.string().trim().min(1).max(80) }));
 
   if (id) {
@@ -250,8 +247,7 @@ export async function upsertCategory(
 }
 
 export async function listUnits(tenant: string): Promise<Response> {
-  const session = await requireSession();
-  const db = tenantPool(session.tenant);
+  const db = tenantPool(tenant);
   const rows = await db<{ id: string; name: string; symbol: string; decimals: number }[]>`
     SELECT id, name, symbol, decimals FROM units ORDER BY name
   `;
@@ -260,7 +256,7 @@ export async function listUnits(tenant: string): Promise<Response> {
 
 export async function upsertUnit(request: Request, tenant: string, id?: string): Promise<Response> {
   const session = await requireRole("admin");
-  const db = tenantPool(session.tenant);
+  const db = tenantPool(tenant);
   const body = await parseBody(
     request,
     z.object({
@@ -291,8 +287,7 @@ export async function upsertUnit(request: Request, tenant: string, id?: string):
 /* --------------------------------------------------------------- alasan */
 
 export async function listReasons(request: Request, tenant: string): Promise<Response> {
-  const session = await requireSession();
-  const db = tenantPool(session.tenant);
+  const db = tenantPool(tenant);
   const url = new URL(request.url);
   const all = url.searchParams.get("all") === "1";
   const rows = await db<
@@ -319,7 +314,7 @@ export async function upsertReason(
   id?: string,
 ): Promise<Response> {
   const session = await requireRole("admin");
-  const db = tenantPool(session.tenant);
+  const db = tenantPool(tenant);
   const body = await parseBody(
     request,
     z.object({
@@ -362,8 +357,7 @@ export async function upsertReason(
 /* --------------------------------------------------------------- mesin */
 
 export async function listEquipment(tenant: string): Promise<Response> {
-  const session = await requireSession();
-  const db = tenantPool(session.tenant);
+  const db = tenantPool(tenant);
   const rows = await db<{ id: string; code: string; name: string; active: boolean }[]>`
     SELECT id, code, name, active FROM equipment ORDER BY name
   `;
@@ -379,7 +373,7 @@ export async function upsertEquipment(
   id?: string,
 ): Promise<Response> {
   const session = await requireRole("admin");
-  const db = tenantPool(session.tenant);
+  const db = tenantPool(tenant);
   const body = await parseBody(
     request,
     z.object({
@@ -508,7 +502,7 @@ export async function createUser(request: Request, tenant: string): Promise<Resp
   );
 }
 
-export async function updateUser(request: Request, id: string, tenant: string): Promise<Response> {
+export async function updateUser(request: Request, id: string, _tenant: string): Promise<Response> {
   const session = await requireRole("admin");
   const body = await parseBody(
     request,

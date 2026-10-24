@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { Suspense } from "react";
 import { Logo } from "@/components/brand";
+import { BackButton } from "@/components/landing/back-button";
 import { LoginCard } from "@/components/landing/login-card";
 import { LocaleToggle, ThemeToggle } from "@/components/theme-locale";
 
@@ -11,8 +12,11 @@ export default async function LoginPage() {
   const t = await getTranslations("login");
   return (
     <div className="hero-canvas flex min-h-dvh flex-col">
-      <header className="flex items-center justify-between px-4 py-4 sm:px-8">
-        <Logo />
+      <header className="flex items-center justify-between gap-2 px-4 py-4 sm:px-8">
+        <div className="flex items-center gap-1">
+          <BackButton />
+          <Logo />
+        </div>
         <div className="flex items-center gap-2">
           <LocaleToggle />
           <ThemeToggle />

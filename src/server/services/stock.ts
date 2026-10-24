@@ -8,8 +8,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type { AuthUser } from "@/server/auth";
-import { tenantPool } from "@/server/db";
-import { tenantDb } from "@/server/http";
+import { tenantPool, withTransaction } from "@/server/db";
 
 export type TxType = "issue" | "return" | "receive" | "transfer" | "adjust";
 
@@ -107,7 +106,10 @@ export async function moveStock(
   const db = tenantPool(tenant);
 
   try {
-    const result = await db.begin(async (tx) => {
+    // withTransaction (bukan db.begin): transaksi dijamin ditutup lewat
+    // reserve()/release(), sehingga request yang dibatalkan klien tidak
+    // meninggalkan koneksi "idle in transaction" yang memacetkan pool.
+    const result = await withTransaction(db, async (tx) => {
       // Idempotency lebih dulu: kiriman ulang tidak membuat baris baru.
       const existing = await tx<{ id: string }[]>`
         SELECT id FROM transactions

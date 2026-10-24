@@ -7,7 +7,7 @@
 import { z } from "zod";
 import type { AuthUser } from "@/server/auth";
 import { tenantPool } from "@/server/db";
-import { errors, ok, parseBody, requireRole, requireSession } from "@/server/http";
+import { errors, ok, parseBody } from "@/server/http";
 import { checkRateLimit, RATE_RULES } from "@/server/rate-limit";
 import { moveStock } from "@/server/services/stock";
 
@@ -537,7 +537,7 @@ export async function setCountLine(
 }
 
 export async function approveCount(
-  request: Request,
+  _request: Request,
   countId: string,
   user: AuthUser,
   tenant: string,

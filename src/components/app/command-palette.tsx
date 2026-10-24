@@ -52,7 +52,7 @@ export function CommandPalette({
     router.push(href);
   };
 
-  const items = navForRole(role);
+  const items = navForRole(role ?? "worker");
 
   return (
     <Command.Dialog

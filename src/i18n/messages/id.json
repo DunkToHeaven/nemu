@@ -147,8 +147,8 @@
     "title": "Ada yang salah",
     "body": "Bagian ini gagal dimuat. Bagian lain tetap bisa dipakai.",
     "retry": "Coba lagi",
-    "pageTitle": "Halaman gagal dimuat",
-    "pageBody": "Terjadi kesalahan saat memuat halaman ini.",
+    "pageTitle": "Halaman ini gagal dimuat",
+    "pageBody": "Terjadi gangguan saat menampilkan halaman. Coba lagi; bila tetap gagal, kembali ke beranda.",
     "notFoundTitle": "Halaman tidak ditemukan",
     "notFoundBody": "Alamat ini tidak ada. Mungkin sudah dipindahkan.",
     "backHome": "Kembali ke beranda",
@@ -156,7 +156,8 @@
     "offlineBody": "Perubahan disimpan di perangkat dan dikirim saat sinyal kembali.",
     "sessionExpired": "Sesi berakhir. Masuk lagi.",
     "forbidden": "Kamu tidak punya akses ke halaman ini.",
-    "network": "Tidak bisa menghubungi server. Periksa koneksi."
+    "network": "Tidak bisa menghubungi server. Periksa koneksi.",
+    "toHome": "Ke beranda"
   },
   "dev": {
     "title": "Panel dev",
@@ -440,7 +441,7 @@
     "deactivateTitle": "Nonaktifkan item?",
     "deactivateBody": "Item tidak muncul di pencarian dan tidak bisa diambil. Bisa diaktifkan lagi kapan saja.",
     "deactivateConfirm": "Nonaktifkan",
-    "qtyReadOnly": "Qty hanya berubah lewat transaksi atau opname.",
+    "qtyReadOnly": "Jumlah stok tidak bisa diketik di sini. Stok hanya berubah lewat transaksi masuk/keluar atau opname.",
     "history": "Riwayat perubahan",
     "historyEmpty": "Belum ada perubahan tercatat.",
     "empty": "Belum ada data",
@@ -464,7 +465,7 @@
     "codeLabel": "Kode QR",
     "categoryLabel": "Kategori",
     "unitLabel": "Satuan",
-    "minStockLabel": "Minimum",
+    "minStockLabel": "Batas minimum stok",
     "unitValueLabel": "Nilai/satuan",
     "bulkLabel": "Curah",
     "activeLabel": "Aktif",
@@ -494,7 +495,10 @@
     "newItemHint": "Kode QR dibuat otomatis oleh sistem.",
     "addShort": "Tambah",
     "newLocationHint": "Lokasi mengikuti hierarki: gudang › zona › rak › bin.",
-    "noParent": "— tanpa induk —"
+    "noParent": "— tanpa induk —",
+    "maxStockLabel": "Batas maksimum stok",
+    "stockRangeHint": "Ini batas pengaman, bukan jumlah stok. Stok sebenarnya hanya berubah lewat transaksi atau opname.",
+    "stockLabel": "Stok saat ini"
   },
   "labels": {
     "title": "Label QR",
@@ -690,7 +694,8 @@
     "demoAdmin": "Admin: ADM01 · PIN 2468",
     "openDashboard": "Buka dashboard",
     "loggedInAs": "Masuk sebagai {name}",
-    "invalidNext": "Tujuan setelah masuk tidak valid, kamu diarahkan ke dashboard."
+    "invalidNext": "Tujuan setelah masuk tidak valid, kamu diarahkan ke dashboard.",
+    "forgotPasswordLink": "Lupa kata sandi?"
   },
   "nav": {
     "home": "Beranda",
@@ -779,7 +784,11 @@
     "crossConfirm": "Dua selisih berbeda di rak yang sama dalam 7 hari.",
     "createFromNeeds": "Buat sesi dari daftar ini",
     "needsCountScore": "Skor {score}",
-    "noLines": "Sesi ini belum punya baris."
+    "noLines": "Sesi ini belum punya baris.",
+    "zoneEmpty": "Belum ada zona",
+    "zoneEmptyHint": "Opname dihitung per zona, jadi Anda perlu membuat minimal satu zona dulu (mis. Zona A). Zona dibuat di halaman Lokasi.",
+    "zoneCreate": "Buat zona",
+    "zoneRequired": "Pilih zona dulu"
   },
   "reports": {
     "title": "Laporan",
@@ -819,7 +828,21 @@
     "emptyBody": "Coba rentang yang lebih panjang.",
     "qty": "Qty",
     "tx": "Transaksi",
-    "rank": "Peringkat"
+    "rank": "Peringkat",
+    "inventoryHealth": "Kesehatan persediaan",
+    "healthBelowMin": "Di bawah minimum",
+    "healthOverMax": "Kelebihan stok",
+    "healthHealthy": "Stok wajar",
+    "healthNeverCounted": "Belum pernah dihitung",
+    "healthNoThreshold": "Tanpa batas",
+    "healthStockValue": "Nilai persediaan",
+    "healthDeadValue": "Nilai menganggur",
+    "healthAge": "Umur pencatatan",
+    "aged30": "< 30 hari",
+    "aged90": "30–90 hari",
+    "aged180": "90–180 hari",
+    "ageolder": "> 180 hari",
+    "agenever": "Belum pernah"
   },
   "take": {
     "title": "Ambil barang",
@@ -1048,5 +1071,22 @@
     "login": "Masuk",
     "emailTaken": "Email ini sudah terdaftar. Coba masuk saja.",
     "genericError": "Pendaftaran gagal. Coba lagi sebentar."
+  },
+  "reset": {
+    "title": "Lupa kata sandi",
+    "subtitle": "Masukkan email admin Anda. Kami buatkan tautan untuk membuat kata sandi baru.",
+    "emailLabel": "Email",
+    "sendLink": "Buat tautan reset",
+    "sending": "Memproses…",
+    "newPassword": "Kata sandi baru",
+    "confirmPassword": "Ulangi kata sandi",
+    "save": "Simpan kata sandi",
+    "saving": "Menyimpan…",
+    "success": "Kata sandi diperbarui. Silakan masuk dengan kata sandi baru.",
+    "mismatch": "Kedua kata sandi tidak sama.",
+    "tooShort": "Kata sandi minimal 8 karakter.",
+    "genericError": "Gagal. Coba lagi sebentar.",
+    "backToLogin": "Kembali ke halaman masuk",
+    "onlyAdmin": "Hanya untuk admin/supervisor. Pekerja memakai PIN — minta reset ke admin gudang."
   }
 }

@@ -2,6 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import * as React from "react";
@@ -291,7 +292,12 @@ export function LoginCard({
         {t("google")}
       </Button>
 
-      <p className="text-center text-2xs leading-relaxed text-muted-foreground">{t("forgotPin")}</p>
+      <p className="text-center text-2xs leading-relaxed text-muted-foreground">
+        {t("forgotPin")}{" "}
+        <Link href="/reset-password" className="font-bold text-primary hover:underline">
+          {t("forgotPasswordLink")}
+        </Link>
+      </p>
 
       {process.env.NODE_ENV !== "production" ? (
         <div

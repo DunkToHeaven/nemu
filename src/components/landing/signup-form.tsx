@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, api } from "@/lib/api/client";
+import { keys } from "@/lib/api/keys";
 
 /**
  * Pendaftaran organisasi baru.
@@ -21,6 +23,7 @@ import { ApiError, api } from "@/lib/api/client";
 export function SignupForm() {
   const t = useTranslations("signup");
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [orgName, setOrgName] = React.useState("");
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
@@ -41,13 +44,24 @@ export function SignupForm() {
     setError(null);
     setPending(true);
     try {
-      await api.auth.signup({
+      const created = await api.auth.signup({
         orgName: orgName.trim(),
         name: name.trim(),
         email: email.trim().toLowerCase(),
         password,
       });
-      // Sesi sudah dibuat server; pindah ke dashboard.
+
+      /**
+       * Isi cache sesi SEBELUM berpindah halaman.
+       *
+       * Tanpa ini, SessionProvider memuat ulang `/auth/session` dari nol dan
+       * sempat mendapat 401 (cookie baru saja dipasang), sehingga UI merender
+       * tampilan pekerja lebih dulu — bagi admin baru itu terlihat seperti
+       * "saya bukan admin". Data di sini berasal dari respons signup yang sah.
+       */
+      queryClient.setQueryData(keys.session, created.user);
+      await queryClient.invalidateQueries({ queryKey: keys.session });
+
       router.replace("/app");
       router.refresh();
     } catch (err) {

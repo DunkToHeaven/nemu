@@ -72,11 +72,16 @@ console.log("\n== 2. DAFTAR DARI HALAMAN SIGNUP ==");
 
   // Admin baru bisa membuka menu Pengguna untuk membuat akun pekerja.
   await page.goto(`${BASE}/app/database/pengguna`, { waitUntil: "load" });
-  await page.waitForTimeout(1500);
+  // Tunggu elemennya, bukan waktu tetap: Supabase butuh ~1-3 detik untuk
+  // memuat daftar pengguna pertama kali.
+  const addUser = page.getByTestId("add-user");
+  await addUser
+    .first()
+    .waitFor({ state: "attached", timeout: 20_000 })
+    .catch(() => null);
   const usersPage = await page.locator("body").innerText();
   check("admin baru bisa membuka menu Pengguna", !/denied|ditolak/i.test(usersPage));
-  const addUser = await page.getByTestId("add-user").count();
-  check("tombol tambah pengguna tersedia", addUser > 0);
+  check("tombol tambah pengguna tersedia", (await addUser.count()) > 0);
 
   await ctx.close();
 }

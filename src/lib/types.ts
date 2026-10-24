@@ -79,6 +79,8 @@ export interface Item {
   categoryId: string;
   unitId: string;
   minStock: number;
+  /** Batas atas stok wajar; null berarti tidak dibatasi. */
+  maxStock: number | null;
   unitValue: number | null;
   isBulk: boolean;
   primaryLocationId: string | null;

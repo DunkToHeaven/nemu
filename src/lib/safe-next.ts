@@ -15,6 +15,9 @@ function hasControlChars(value: string): boolean {
   return false;
 }
 
+/** Halaman publik: tidak masuk akal dijadikan tujuan setelah login. */
+const PUBLIC_PATHS = new Set(["/", "/login", "/signup", "/reset-password", "/scan"]);
+
 /** `next` hanya boleh path internal. */
 export function safeNext(value: string | null | undefined, fallback = "/app"): string {
   if (!value) return fallback;
@@ -29,8 +32,12 @@ export function safeNext(value: string | null | undefined, fallback = "/app"): s
   try {
     const url = new URL(trimmed, "http://nemu.local");
     if (url.origin !== "http://nemu.local") return fallback;
-    // "/" adalah halaman publik; setelah login tujuannya harus di dalam aplikasi.
-    if (url.pathname === "/" || url.pathname === "") return fallback;
+    // Halaman publik (termasuk `/login` itu sendiri) tidak boleh jadi tujuan.
+    //
+    // Tanpa ini, membuka `/login?next=/login` lalu berhasil login akan
+    // me-redirect KEMBALI ke halaman login. Bagi pengguna itu terlihat seperti
+    // "kata sandi selalu salah" padahal login sukses dan cookie sudah terpasang.
+    if (PUBLIC_PATHS.has(url.pathname)) return fallback;
     return `${url.pathname}${url.search}${url.hash}`;
   } catch {
     return fallback;

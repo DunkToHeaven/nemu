@@ -17,7 +17,7 @@ import { createSession, setSessionCookie } from "@/server/auth";
 import { hashSecret } from "@/server/crypto";
 import { sql } from "@/server/db";
 import { errors, ok, parseBody } from "@/server/http";
-import { checkRateLimit, RATE_RULES } from "@/server/rate-limit";
+import { checkRateLimit } from "@/server/rate-limit";
 import { createTenant } from "@/server/tenant";
 
 const signupSchema = z.object({

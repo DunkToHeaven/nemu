@@ -201,6 +201,17 @@ export const api = {
         method: "POST",
         body: input,
       }).then((r) => parse(loginResponseSchema, r, "login")),
+    /** Minta tautan reset. Server TIDAK mengembalikan token (cegah pengambilalihan). */
+    forgot: (email: string) =>
+      request<{ message: string; emailSent: boolean }>("auth/forgot", {
+        method: "POST",
+        body: { email },
+      }),
+    reset: (token: string, password: string) =>
+      request<{ ok: boolean; message: string }>("auth/reset", {
+        method: "POST",
+        body: { token, password },
+      }),
     logout: () => request<{ ok: boolean }>("auth/logout", { method: "POST" }),
     switchRole: (role: Role) =>
       request<{ user: SessionUser }>("auth/role", { method: "POST", body: { role } }).then((r) =>
@@ -498,8 +509,30 @@ export interface DashboardResponse {
   } | null;
 }
 
+export interface InventoryHealth {
+  total: number;
+  /** Item yang stoknya di bawah batas minimum. */
+  belowMin: number;
+  /** Item yang stoknya melebihi batas maksimum (stok menumpuk). */
+  overMax: number;
+  /** Item yang stoknya dalam rentang wajar. */
+  healthy: number;
+  /** Item tanpa batas min maupun max — tidak bisa dinilai. */
+  noThreshold: number;
+  neverCounted: number;
+  zeroStock: number;
+  /** Nilai persediaan (qty x harga satuan), 0 bila harga tidak diisi. */
+  stockValue: number;
+  /** Nilai item yang tidak bergerak > 60 hari. */
+  deadValue: number;
+  deadCount: number;
+  /** Sebaran umur pencatatan terakhir. */
+  ageBuckets: { d30: number; d90: number; d180: number; older: number; never: number };
+}
+
 export interface ReportsResponse {
   rangeDays: number;
+  inventoryHealth: InventoryHealth;
   trend: { date: string; qty: number; tx: number }[];
   topItems: { id: string; label: string; qty: number; tx: number }[];
   byUser: { id: string; label: string; qty: number; tx: number }[];

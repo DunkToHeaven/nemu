@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import * as React from "react";
 import { toast } from "sonner";
@@ -487,6 +487,7 @@ function CreateCountDialog({
   const t = useTranslations("opname");
   const queryClient = useQueryClient();
   const [zoneId, setZoneId] = React.useState("");
+  const router = useRouter();
   const [name, setName] = React.useState("");
   const [blind, setBlind] = React.useState(false);
 
@@ -519,14 +520,41 @@ function CreateCountDialog({
               value={zoneId}
               onChange={(event) => setZoneId(event.target.value)}
               className="h-12 w-full rounded-[14px] border border-input bg-card px-3 text-base"
+              disabled={zones.length === 0}
             >
-              <option value="">{t("zonePlaceholder")}</option>
+              <option value="">{zones.length === 0 ? t("zoneEmpty") : t("zonePlaceholder")}</option>
               {zones.map((zone) => (
                 <option key={zone.id} value={zone.id}>
                   {zone.path}
                 </option>
               ))}
             </select>
+            {/*
+              Opname dihitung per zona, jadi zona WAJIB ada. Sebelumnya dropdown
+              kosong tanpa penjelasan dan tombol Simpan mati begitu saja —
+              pengguna tidak tahu harus ke mana. Sekarang ada penjelasan dan
+              tombol yang langsung mengantar ke halaman pembuatan zona.
+            */}
+            {zones.length === 0 ? (
+              <div className="space-y-2 rounded-xl border border-dashed border-border bg-muted/40 p-3">
+                <p className="text-2xs leading-relaxed text-muted-foreground">
+                  {t("zoneEmptyHint")}
+                </p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  data-testid="opname-create-zone"
+                  onClick={() => {
+                    onOpenChange(false);
+                    router.push("/app/database/lokasi?new=1&type=zone");
+                  }}
+                >
+                  <Icon name="plus" className="size-4" />
+                  {t("zoneCreate")}
+                </Button>
+              </div>
+            ) : null}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="count-name">{t("nameLabel")}</Label>
@@ -549,7 +577,11 @@ function CreateCountDialog({
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
             Batal
           </Button>
-          <Button onClick={() => create.mutate()} disabled={!zoneId || create.isPending}>
+          <Button
+            onClick={() => create.mutate()}
+            disabled={!zoneId || create.isPending}
+            title={!zoneId ? t("zoneRequired") : undefined}
+          >
             {t("create")}
           </Button>
         </DialogFooter>

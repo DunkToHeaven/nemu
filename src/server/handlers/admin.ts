@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { AuthUser } from "@/server/auth";
 import { tenantPool } from "@/server/db";
 import { audit } from "@/server/handlers/master";
-import { errors, ok, parseBody, requireRole, requireSession } from "@/server/http";
+import { errors, ok, parseBody } from "@/server/http";
 import { issueStock, moveStock } from "@/server/services/stock";
 
 /* ----------------------------------------------------------- pengaturan */
@@ -326,7 +326,7 @@ export async function previewImport(
 }
 
 export async function applyImport(
-  request: Request,
+  _request: Request,
   id: string,
   user: AuthUser,
   tenant: string,
@@ -344,6 +344,19 @@ export async function applyImport(
 
   let created = 0;
   let updated = 0;
+
+  /**
+   * Gudang baru mulai tanpa satuan maupun kategori apa pun (data referensi
+   * sengaja tidak di-seed). Tanpa ini, impor pertama selalu gagal dengan
+   * "violates foreign key constraint items_unit_id_fkey" — dan pesan itu tidak
+   * memberi tahu pengguna bahwa yang kurang adalah data referensi.
+   */
+  if (summary.entity === "items") {
+    await db`INSERT INTO units (id, name, symbol, decimals)
+             VALUES ('un_pcs', 'Pcs', 'pcs', 0) ON CONFLICT DO NOTHING`;
+    await db`INSERT INTO categories (id, name)
+             VALUES ('cat_umum', 'Umum') ON CONFLICT DO NOTHING`;
+  }
 
   for (const [index, row] of job.rows.entries()) {
     if (rejectedRows.has(index + 2)) continue;
@@ -376,16 +389,28 @@ export async function applyImport(
       `;
       if (existing[0]) {
         await db`UPDATE items SET name = ${name}, category_id = ${catId},
-          min_stock = ${Number(row.minStock ?? 0) || 0}, updated_at = now()
+          min_stock = ${Number(row.min_stock ?? row.minStock ?? 0) || 0},
+          max_stock = ${
+            row.max_stock === undefined || row.max_stock === ""
+              ? null
+              : Number(row.max_stock) || null
+          },
+          updated_at = now()
           WHERE id = ${existing[0].id}`;
         updated += 1;
       } else {
         const code = Array.from(crypto.getRandomValues(new Uint8Array(9)))
           .map((b) => "0123456789ABCDEFGHJKMNPQRSTVWXYZ"[b % 32])
           .join("");
-        await db`INSERT INTO items (id, sku, code, name, category_id, unit_id, min_stock)
+        await db`INSERT INTO items (id, sku, code, name, category_id, unit_id, min_stock, max_stock)
           VALUES (${`itm_${crypto.randomUUID().slice(0, 8)}`}, ${sku}, ${code}, ${name},
-                  ${catId}, ${unitId}, ${Number(row.minStock ?? 0) || 0})`;
+                  ${catId}, ${unitId},
+                  ${Number(row.min_stock ?? row.minStock ?? 0) || 0},
+                  ${
+                    row.max_stock === undefined || row.max_stock === ""
+                      ? null
+                      : Number(row.max_stock) || null
+                  })`;
         created += 1;
       }
     }

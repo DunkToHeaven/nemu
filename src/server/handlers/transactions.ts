@@ -42,6 +42,7 @@ export const transactionSchema = z.discriminatedUnion("type", [
 
 export async function createTransaction(request: Request): Promise<Response> {
   const session = await requireSession();
+  const db = tenantPool(session.tenant);
 
   const limit = await checkRateLimit({
     bucket: `tx:${session.user.id}`,
@@ -75,8 +76,8 @@ export async function createTransaction(request: Request): Promise<Response> {
 
     // Idempotency: kiriman ulang mengembalikan 200 dengan penanda duplicate,
     // bukan membuat transaksi kedua.
-    const tx = await loadTransaction(result.txId);
-    const stock = await loadStockLevel(body.itemId, body.locationId);
+    const tx = await loadTransaction(db, result.txId);
+    const stock = await loadStockLevel(db, body.itemId, body.locationId);
 
     // Kustodi dibuka otomatis bila fitur aktif (PRD CU-01). Barang yang diambil
     // berstatus "dibawa" sampai ditutup, supaya tidak hilang dari pengawasan.
@@ -137,9 +138,9 @@ export async function createTransaction(request: Request): Promise<Response> {
 
   return ok(
     {
-      transaction: await loadTransaction(result.txId),
+      transaction: await loadTransaction(db, result.txId),
       duplicate: result.duplicate,
-      stock: await loadStockLevel(body.itemId, body.toLocationId ?? body.fromLocationId ?? ""),
+      stock: await loadStockLevel(db, body.itemId, body.toLocationId ?? body.fromLocationId ?? ""),
       custody: null,
       verificationPrompt: null,
       message: result.duplicate ? "Transaksi ini sudah tercatat." : "Transaksi tersimpan.",
@@ -181,7 +182,7 @@ async function openCustodyIfEnabled(
     // Kustodi gagal tidak boleh membatalkan transaksi yang sudah sah tercatat.
     return null;
   }
-  return loadCustody(id);
+  return loadCustody(db, id);
 }
 
 export async function listTransactions(request: Request): Promise<Response> {
@@ -281,7 +282,7 @@ export async function listTransactions(request: Request): Promise<Response> {
   return ok(paginate(mapped, cursor, limit));
 }
 
-export async function itemTransactions(request: Request, itemId: string): Promise<Response> {
+export async function itemTransactions(_request: Request, itemId: string): Promise<Response> {
   const session = await requireSession();
   const db = tenantPool(session.tenant);
   const rows = await db<

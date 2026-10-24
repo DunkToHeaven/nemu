@@ -20,6 +20,7 @@ interface ItemRow {
   category_id: string;
   unit_id: string;
   min_stock: number;
+  max_stock: number | null;
   unit_value: string | null;
   is_bulk: boolean;
   primary_location_id: string | null;
@@ -38,6 +39,7 @@ function toItem(row: ItemRow) {
     categoryId: row.category_id,
     unitId: row.unit_id,
     minStock: row.min_stock,
+    maxStock: row.max_stock ?? null,
     unitValue: row.unit_value === null ? null : Number(row.unit_value),
     isBulk: row.is_bulk,
     primaryLocationId: row.primary_location_id,
@@ -210,7 +212,7 @@ export async function searchItems(request: Request): Promise<Response> {
   return ok({ ...page, total: mapped.length, tookMs: Date.now() - started });
 }
 
-export async function itemByCode(request: Request, code: string): Promise<Response> {
+export async function itemByCode(_request: Request, code: string): Promise<Response> {
   const session = await requireSession();
   const db = tenantPool(session.tenant);
 
@@ -382,13 +384,33 @@ export async function createItem(request: Request): Promise<Response> {
   // Kode QR dibuat di server, bukan klien: harus unik dan tidak bisa dipalsukan.
   const code = generateItemCode();
 
-  await db`
-    INSERT INTO items (id, sku, code, name, category_id, unit_id, min_stock,
-      unit_value, is_bulk, primary_location_id)
-    VALUES (${id}, ${body.sku}, ${code}, ${body.name}, ${body.categoryId}, ${body.unitId},
-            ${body.minStock ?? 0}, ${body.unitValue ?? null}, ${body.isBulk ?? false},
-            ${body.primaryLocationId ?? null})
-  `;
+  // Validasi referensi lebih dulu. Tanpa ini, kategori/lokasi yang tidak ada
+  // menghasilkan 500 "Terjadi kesalahan pada server" — pengguna tidak tahu apa
+  // yang salah, padahal masalahnya cuma kategori yang belum dibuat.
+  const [cat] = await db`SELECT 1 FROM categories WHERE id = ${body.categoryId}`;
+  if (!cat) throw errors.badRequest("Kategori tidak ditemukan.");
+  const [unit] = await db`SELECT 1 FROM units WHERE id = ${body.unitId}`;
+  if (!unit) throw errors.badRequest("Satuan tidak ditemukan.");
+  if (body.primaryLocationId) {
+    const [loc] = await db`SELECT 1 FROM locations WHERE id = ${body.primaryLocationId}`;
+    if (!loc) throw errors.badRequest("Lokasi tidak ditemukan.");
+  }
+
+  try {
+    await db`
+      INSERT INTO items (id, sku, code, name, category_id, unit_id, min_stock, max_stock,
+        unit_value, is_bulk, primary_location_id)
+      VALUES (${id}, ${body.sku}, ${code}, ${body.name}, ${body.categoryId}, ${body.unitId},
+              ${body.minStock ?? 0}, ${body.maxStock ?? null}, ${body.unitValue ?? null},
+              ${body.isBulk ?? false}, ${body.primaryLocationId ?? null})
+    `;
+  } catch (error) {
+    // SKU ganda adalah kesalahan pengguna, bukan kegagalan server.
+    if (error && typeof error === "object" && "code" in error && error.code === "23505") {
+      throw errors.badRequest("SKU itu sudah dipakai item lain.");
+    }
+    throw error;
+  }
 
   await audit(db, session.user.id, "item", id, "create", null, { sku: body.sku, name: body.name });
   return ok({ item: { id, code } }, { status: 201 });
@@ -409,6 +431,7 @@ export async function updateItem(request: Request, id: string): Promise<Response
       category_id = ${body.categoryId ?? before[0].category_id},
       unit_id = ${body.unitId ?? before[0].unit_id},
       min_stock = ${body.minStock ?? before[0].min_stock},
+      max_stock = ${body.maxStock === undefined ? before[0].max_stock : body.maxStock},
       is_bulk = ${body.isBulk ?? before[0].is_bulk},
       active = ${body.active ?? before[0].active},
       updated_at = now()

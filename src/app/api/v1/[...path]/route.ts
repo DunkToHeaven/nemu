@@ -53,6 +53,11 @@ import {
   settleCustody,
   submitVerification,
 } from "@/server/handlers/operations";
+import {
+  forgotInfo,
+  handleForgotPassword,
+  handleResetPassword,
+} from "@/server/handlers/password-reset";
 import { checkEmail, handleSignup } from "@/server/handlers/signup";
 import {
   createTransaction,
@@ -159,6 +164,9 @@ async function dispatchDb(request: NextRequest, segments: string[]): Promise<Res
   if (head === "auth") {
     if (second === "signup" && method === "POST") return handleSignup(request);
     if (second === "email" && method === "GET") return checkEmail(request);
+    if (second === "forgot" && method === "POST") return handleForgotPassword(request);
+    if (second === "forgot" && method === "GET") return forgotInfo();
+    if (second === "reset" && method === "POST") return handleResetPassword(request);
     if (second === "login" && method === "POST") return handleLogin(request);
     if (second === "logout" && method === "POST") return handleLogout();
     if (second === "session" && method === "GET") return handleSession();

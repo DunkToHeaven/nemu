@@ -551,6 +551,7 @@ export function importApply(req: ApiRequest, id: string): ApiResponse {
         categoryId: category.id,
         unitId: unit.id,
         minStock: 0,
+        maxStock: null,
         unitValue: null,
         isBulk: false,
         primaryLocationId:

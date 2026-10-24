@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api/client";
 import { keys } from "@/lib/api/keys";
-import { formatNumber, relativeTime } from "@/lib/format";
+import { formatNumber, formatQty, relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const TrendChart = dynamic(
@@ -36,6 +36,7 @@ export function ReportsView() {
   if (isLoading) return <KpiSkeleton />;
   if (isError || !data) return <ErrorState onRetry={() => void refetch()} />;
 
+  const health = data.inventoryHealth;
   const confidenceTotal = Math.max(1, data.confidence.total);
   const pct = (value: number) => Math.round((value / confidenceTotal) * 100);
 
@@ -84,6 +85,136 @@ export function ReportsView() {
           </Button>
         </div>
       </div>
+
+      {/*
+        Kesehatan persediaan: menilai KONDISI STOK, bukan hanya ketelitian
+        catatan. Sebelumnya halaman ini hanya menampilkan distribusi confidence,
+        sehingga pemilik gudang tidak bisa melihat berapa item yang benar-benar
+        menipis atau menumpuk.
+      */}
+      <WidgetBoundary title={t("inventoryHealth")}>
+        <div className="space-y-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {(
+              [
+                ["belowMin", health.belowMin, "danger", "alert"],
+                ["overMax", health.overMax, "warning", "boxes"],
+                ["healthy", health.healthy, "success", "checkCircle"],
+                ["neverCounted", health.neverCounted, "neutral", "clipboard"],
+              ] as const
+            ).map(([key, value, tone, icon]) => (
+              <div
+                key={key}
+                className="flex items-center gap-2.5 rounded-xl border border-border bg-card p-3"
+              >
+                <span
+                  className={cn(
+                    "grid size-9 shrink-0 place-items-center rounded-lg",
+                    tone === "danger" && "bg-danger-soft text-danger-foreground",
+                    tone === "warning" && "bg-warning-soft text-warning-foreground",
+                    tone === "success" && "bg-success-soft text-success-foreground",
+                    tone === "neutral" && "bg-muted text-muted-foreground",
+                  )}
+                >
+                  <Icon name={icon} className="size-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="tnum text-lg font-extrabold leading-none">{value}</p>
+                  <p className="truncate text-2xs text-muted-foreground">
+                    {t(`health${key.charAt(0).toUpperCase()}${key.slice(1)}` as "healthBelowMin")}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Bar komposisi: proporsi stok sehat vs bermasalah. */}
+          {health.total > 0 ? (
+            <div className="space-y-1.5">
+              <div className="flex h-3 overflow-hidden rounded-full bg-muted">
+                {(
+                  [
+                    [health.healthy, "bg-success"],
+                    [health.belowMin, "bg-danger"],
+                    [health.overMax, "bg-warning"],
+                    [health.noThreshold, "bg-muted-foreground/40"],
+                  ] as const
+                ).map(([value, cls], index) =>
+                  value > 0 ? (
+                    <span
+                      key={index}
+                      className={cls}
+                      style={{ width: `${(value / Math.max(1, health.total)) * 100}%` }}
+                      title={`${value}`}
+                    />
+                  ) : null,
+                )}
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <span className="size-2 rounded-full bg-success" /> {t("healthHealthy")}{" "}
+                  {health.healthy}
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="size-2 rounded-full bg-danger" /> {t("healthBelowMin")}{" "}
+                  {health.belowMin}
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="size-2 rounded-full bg-warning" /> {t("healthOverMax")}{" "}
+                  {health.overMax}
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="size-2 rounded-full bg-muted-foreground/40" />{" "}
+                  {t("healthNoThreshold")} {health.noThreshold}
+                </span>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="grid gap-2 sm:grid-cols-3">
+            <div className="rounded-xl border border-border p-3">
+              <p className="text-2xs font-bold uppercase tracking-wide text-muted-foreground">
+                {t("healthStockValue")}
+              </p>
+              <p className="tnum mt-0.5 text-sm font-extrabold">
+                {formatQty(health.stockValue, locale)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-border p-3">
+              <p className="text-2xs font-bold uppercase tracking-wide text-muted-foreground">
+                {t("healthDeadValue")}
+              </p>
+              <p className="tnum mt-0.5 text-sm font-extrabold">
+                {formatQty(health.deadValue, locale)}
+                <span className="ml-1 text-2xs font-semibold text-muted-foreground">
+                  ({health.deadCount})
+                </span>
+              </p>
+            </div>
+            <div className="rounded-xl border border-border p-3">
+              <p className="text-2xs font-bold uppercase tracking-wide text-muted-foreground">
+                {t("healthAge")}
+              </p>
+              <ul className="mt-1 space-y-0.5 text-2xs">
+                {(
+                  [
+                    ["d30", health.ageBuckets.d30],
+                    ["d90", health.ageBuckets.d90],
+                    ["d180", health.ageBuckets.d180],
+                    ["older", health.ageBuckets.older],
+                    ["never", health.ageBuckets.never],
+                  ] as const
+                ).map(([key, value]) => (
+                  <li key={key} className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">{t(`age${key}` as "aged30")}</span>
+                    <span className="tnum font-bold">{value}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </WidgetBoundary>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <WidgetBoundary title={t("trend")} className="lg:col-span-2">

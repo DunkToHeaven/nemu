@@ -146,6 +146,7 @@ export function createItem(req: ApiRequest): ApiResponse {
     categoryId: input.categoryId,
     unitId: input.unitId,
     minStock: input.minStock,
+    maxStock: null,
     unitValue: input.unitValue ?? null,
     isBulk: input.isBulk ?? false,
     primaryLocationId: input.primaryLocationId ?? null,

@@ -73,6 +73,7 @@ export function isPublicPath(pathname: string): boolean {
     pathname === "/login" ||
     // Halaman daftar harus bisa dibuka tanpa sesi — itu pintu masuk publik.
     pathname === "/signup" ||
+    pathname === "/reset-password" ||
     pathname === "/docs" ||
     pathname === "/privacy" ||
     pathname.startsWith("/api/") ||

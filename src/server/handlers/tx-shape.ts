@@ -6,7 +6,7 @@
  * satu field akan menggagalkan seluruh alur UI ("Respons tidak sesuai
  * kontrak"), bukan sekadar menampilkan nilai kosong.
  */
-import { sql } from "@/server/db";
+import type { Sql } from "postgres";
 
 interface TxRow {
   id: string;
@@ -33,8 +33,8 @@ interface TxRow {
   item_name: string;
 }
 
-export async function loadTransaction(id: string) {
-  const rows = await sql<TxRow[]>`
+export async function loadTransaction(db: Sql, id: string) {
+  const rows = await db<TxRow[]>`
     SELECT t.id, t.type::text AS type, t.item_id, t.from_location_id, t.to_location_id, t.qty,
            t.user_id, t.reason_id, t.ref_no, t.note, t.idempotency_key, t.device_id,
            t.scan_method::text AS scan_method, t.custody_id, t.equipment_id,
@@ -74,8 +74,8 @@ export async function loadTransaction(id: string) {
   };
 }
 
-export async function loadStockLevel(itemId: string, locationId: string) {
-  const rows = await sql<
+export async function loadStockLevel(db: Sql, itemId: string, locationId: string) {
+  const rows = await db<
     {
       item_id: string;
       location_id: string;
@@ -150,8 +150,8 @@ export async function loadStockLevel(itemId: string, locationId: string) {
   };
 }
 
-export async function loadCustody(id: string) {
-  const rows = await sql<
+export async function loadCustody(db: Sql, id: string) {
+  const rows = await db<
     {
       id: string;
       issue_tx_id: string;

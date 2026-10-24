@@ -41,6 +41,7 @@ export function NewItemSheet({
   const [categoryId, setCategoryId] = React.useState("");
   const [unitId, setUnitId] = React.useState("");
   const [minStock, setMinStock] = React.useState("0");
+  const [maxStock, setMaxStock] = React.useState("");
   const [locationId, setLocationId] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
 
@@ -78,6 +79,9 @@ export function NewItemSheet({
         categoryId,
         unitId,
         minStock: Number(minStock) || 0,
+        // Kosong = tanpa plafon. Number("") === 0 akan salah menandai
+        // item sebagai kelebihan stok di laporan.
+        maxStock: maxStock.trim() === "" ? null : Number(maxStock),
         primaryLocationId: locationId || null,
       }),
     onSuccess: () => {
@@ -193,6 +197,21 @@ export function NewItemSheet({
                 min={0}
                 value={minStock}
                 onChange={(event) => setMinStock(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="new-max" className="text-[13px] font-bold">
+                {t("maxStockLabel")}
+              </label>
+              <Input
+                id="new-max"
+                data-testid="new-item-max"
+                type="number"
+                min={0}
+                placeholder="—"
+                value={maxStock}
+                onChange={(event) => setMaxStock(event.target.value)}
               />
             </div>
 

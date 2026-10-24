@@ -88,7 +88,7 @@ export async function handleLogin(request: Request): Promise<Response> {
     const user = rows[0];
     // Pesan error netral: tidak membocorkan apakah kode ada atau PIN salah.
     // Kodenya INVALID_CREDENTIALS agar UI bisa menampilkan sisa percobaan.
-    if (!user || !user.active || !(await verifySecret(body.pin, user.pin_hash))) {
+    if (!user?.active || !(await verifySecret(body.pin, user.pin_hash))) {
       throw errors.invalidCredentials(idLimit.remaining);
     }
     userId = user.id;
@@ -106,7 +106,7 @@ export async function handleLogin(request: Request): Promise<Response> {
     >`SELECT id, role, password_hash, active, tenant_slug
       FROM users WHERE lower(email) = ${body.email.toLowerCase()} AND active LIMIT 1`;
     const user = rows[0];
-    if (!user || !user.active || !(await verifySecret(body.password, user.password_hash))) {
+    if (!user?.active || !(await verifySecret(body.password, user.password_hash))) {
       throw errors.invalidCredentials(idLimit.remaining);
     }
     userId = user.id;
