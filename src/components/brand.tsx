@@ -3,27 +3,24 @@ import { cn } from "@/lib/utils";
 
 export function LogoMark({ className }: { className?: string }) {
   return (
-    <span
-      className={cn(
-        "grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground",
-        className,
-      )}
-      aria-hidden="true"
+    <svg
+      viewBox="0 0 1920 1920"
+      role="img"
+      aria-label="Logo Nemu"
+      className={cn("size-10 shrink-0", className)}
     >
-      <svg
-        viewBox="0 0 24 24"
-        width="22"
-        height="22"
+      {/* rx 300/1920 ≈ sudut sedikit membulat di semua ukuran render */}
+      <rect width="1920" height="1920" rx="300" fill="#AD3400" />
+      <path fill="#FFFFFF" d="M378 378H636L1089 1085V378H1347V1568H1089L636 861V1568H378Z" />
+      <circle cx="1466" cy="200" r="86" fill="none" stroke="#FFFFFF" strokeWidth="28" />
+      <path
+        d="M1528 262L1608 342"
         fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
+        stroke="#FFFFFF"
+        strokeWidth="28"
         strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" />
-        <circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" />
-      </svg>
-    </span>
+      />
+    </svg>
   );
 }
 

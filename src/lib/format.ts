@@ -36,6 +36,19 @@ export function formatNumber(value: number, locale: string, decimals = 0): strin
   }).format(value);
 }
 
+/**
+ * Harga dalam Rupiah tanpa desimal. UI memakai angka telanjang tanpa ribuan
+ * membuat harga Rp150.000 terbaca seperti 150 — format ini dipakai bersama
+ * oleh form, tabel item, dan laporan tren harga.
+ */
+export function formatPrice(value: number, locale: string): string {
+  return new Intl.NumberFormat(locale === "id" ? "id-ID" : "en-GB", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
 export function formatDate(value: string, locale: string, withTime = false): string {
   const date = new Date(value);
   return new Intl.DateTimeFormat(locale === "id" ? "id-ID" : "en-GB", {

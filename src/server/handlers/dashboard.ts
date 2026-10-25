@@ -202,11 +202,6 @@ export async function getDashboard(user: AuthUser, tenant: string): Promise<Resp
     SELECT count(*)::int AS count FROM custody WHERE status = 'open'
   `;
 
-  const activeUsers = await db<{ count: number }[]>`
-    SELECT count(DISTINCT user_id)::int AS count FROM sessions
-    WHERE expires_at > now() AND revoked_at IS NULL
-  `;
-
   const isAdmin = user.role === "admin";
 
   return ok({
@@ -258,7 +253,17 @@ export async function getDashboard(user: AuthUser, tenant: string): Promise<Resp
       at: r.at.toISOString(),
       unit: r.unit,
     })),
-    needsCount,
+    // Nama field harus camelCase seperti yang dibaca dashboard (itemId dst).
+    // Raw row snake_case membuat key React `undefined-undefined` ganda.
+    needsCount: needsCount.map((r) => ({
+      itemId: r.item_id,
+      itemName: r.item_name,
+      locationPath: r.location_path,
+      score: r.score,
+      level: confidenceLevel(r.score),
+      qty: r.qty,
+      unit: r.unit,
+    })),
     usage,
     topItems,
     custody: custodyRows.map((r) => ({
@@ -270,24 +275,6 @@ export async function getDashboard(user: AuthUser, tenant: string): Promise<Resp
       unit: r.unit,
     })),
     teamCustodyCount: teamCustody[0]?.count ?? 0,
-    // Status sistem hanya untuk admin (PRD: worker tidak melihat data sistem).
-    system: isAdmin
-      ? {
-          version: "0.2.0",
-          activeUsers: activeUsers[0]?.count ?? 0,
-          lastBackupAt: null,
-          sheetsSync: "disconnected",
-          pendingOutbox: 0,
-          uptimeHours: Math.round(process.uptime() / 3600),
-          setupChecklist: [
-            { id: "admin", label: "Admin pertama dibuat", done: true },
-            { id: "items", label: "Item diimpor", done: (t?.total_items ?? 0) > 0 },
-            { id: "locations", label: "Lokasi dibuat", done: true },
-            { id: "labels", label: "Label QR dicetak", done: false },
-            { id: "google", label: "Google Drive terhubung", done: false },
-          ],
-        }
-      : null,
   });
 }
 
@@ -558,9 +545,16 @@ export async function getReports(request: Request, tenant: string): Promise<Resp
       low: confMap.get("low") ?? 0,
       never: confMap.get("never") ?? 0,
       total: confTotal,
-      needsCount: await db<
-        { item_id: string; item_name: string; location_path: string; score: number; qty: number }[]
-      >`
+      needsCount: (
+        await db<
+          {
+            item_id: string;
+            item_name: string;
+            location_path: string;
+            score: number;
+            qty: number;
+          }[]
+        >`
         SELECT i.id AS item_id, i.name AS item_name, COALESCE(l.path, '—') AS location_path,
                0 AS score, COALESCE(s.qty, 0)::int AS qty
         FROM items i
@@ -570,7 +564,14 @@ export async function getReports(request: Request, tenant: string): Promise<Resp
           SELECT 1 FROM verifications v WHERE v.item_id = i.id
             AND v.answered_at > now() - interval '90 days')
         ORDER BY COALESCE(s.qty, 0) DESC LIMIT 10
-      `,
+      `
+      ).map((r) => ({
+        itemId: r.item_id,
+        itemName: r.item_name,
+        locationPath: r.location_path,
+        score: r.score,
+        qty: r.qty,
+      })),
     },
     deadStock: deadStock.map((r) => ({
       itemId: r.item_id,

@@ -6,6 +6,13 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  async redirects() {
+    return [
+      // Halaman dokumentasi digantikan halaman dukungan kreator.
+      { source: "/docs", destination: "/support", permanent: true },
+      { source: "/privacy", destination: "/support", permanent: true },
+    ];
+  },
   /**
    * pnpm memasang dua varian peer @tanstack/react-query (satu untuk build
    * modern, satu lagi hasil resolusi peer berbeda). Dua salinan = dua React

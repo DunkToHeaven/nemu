@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import * as React from "react";
 import { toast } from "sonner";
@@ -26,54 +25,36 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Switch } from "@/components/ui/switch";
 import { ApiError, api, type StockCountRow } from "@/lib/api/client";
 import { keys } from "@/lib/api/keys";
 import { formatQty, relativeTime } from "@/lib/format";
-import type { Verification } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+/**
+ * Opname — satu layar, tanpa tab.
+ *
+ * Alurnya sengaja dipermudah untuk pengguna umum:
+ *   1. Klik "Sesi baru", pilih SATU lokasi.
+ *   2. Sistem menarik semua barang di lokasi itu beserta stok catatannya.
+ *   3. Petugas menghitung barang asli, mengetik angkanya per baris; setiap
+ *      baris punya tombol riwayat untuk melihat transaksi terakhir barang itu
+ *      — saat angka beda, penyebabnya kelihatan tanpa pindah halaman.
+ *   4. "Selesai & koreksi" membuat transaksi koreksi untuk setiap selisih.
+ *      Angka lama tidak diedit diam-diam; riwayat tetap utuh.
+ *
+ * Kata "zona" dan hierarki lokasi dibuang: lokasi berdiri sendiri.
+ */
 export function OpnameView() {
   const t = useTranslations("opname");
-  const locale = useLocale();
-  const params = useSearchParams();
-  const initialTab =
-    params.get("tab") === "needs"
-      ? "needs"
-      : params.get("tab") === "variances"
-        ? "variances"
-        : "sessions";
-  const [tab, setTab] = React.useState<"sessions" | "variances" | "needs">(
-    initialTab as "sessions" | "variances" | "needs",
-  );
-  const [openCount, setOpenCount] = React.useState<StockCountRow | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [openCount, setOpenCount] = React.useState<StockCountRow | null>(null);
 
   const counts = useQuery({ queryKey: keys.counts, queryFn: () => api.counts.list() });
-  const variances = useQuery({
-    queryKey: keys.verifyQueue,
-    queryFn: () => api.verify.list("pending"),
-  });
-  const reports = useQuery({ queryKey: keys.reports(90), queryFn: () => api.reports(90) });
-  const meta = useQuery({
-    queryKey: keys.meta,
-    queryFn: () => api.master.meta(),
-    staleTime: 5 * 60_000,
-  });
 
-  const tabs = [
-    { key: "sessions" as const, label: t("tabSessions"), count: counts.data?.data.length ?? 0 },
-    {
-      key: "variances" as const,
-      label: t("tabVariances"),
-      count: variances.data?.data.length ?? 0,
-    },
-    {
-      key: "needs" as const,
-      label: t("tabNeedsCount"),
-      count: reports.data?.confidence.needsCount.length ?? 0,
-    },
-  ];
+  // Panel yang terbuka mengikuti data terbaru (mis. setelah baris dihitung).
+  const shown = openCount
+    ? (counts.data?.data.find((c) => c.id === openCount.id) ?? openCount)
+    : null;
 
   return (
     <div className="space-y-3">
@@ -82,44 +63,24 @@ export function OpnameView() {
           <h1 className="text-lg font-extrabold">{t("title")}</h1>
           <p className="text-[13px] text-muted-foreground">{t("subtitle")}</p>
         </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
+        <Button size="sm" data-testid="opname-new-session" onClick={() => setCreateOpen(true)}>
           <Icon name="plus" className="size-4" />
           {t("newSession")}
         </Button>
       </div>
 
-      <div className="flex gap-1.5 overflow-x-auto rounded-full bg-muted p-1.5 scrollbar-thin">
-        {tabs.map((entry) => (
-          <button
-            key={entry.key}
-            type="button"
-            onClick={() => setTab(entry.key)}
-            aria-pressed={tab === entry.key}
-            className={cn(
-              "min-h-9 shrink-0 rounded-full px-3.5 text-[13px] font-bold transition-colors",
-              tab === entry.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
-            )}
-          >
-            {entry.label}
-            {entry.count > 0 ? (
-              <span className="tnum ml-1.5 text-2xs font-bold text-muted-foreground">
-                {entry.count}
-              </span>
-            ) : null}
-          </button>
-        ))}
-      </div>
-
-      {tab === "sessions" ? (
-        counts.isLoading ? (
-          <ListSkeleton rows={4} />
-        ) : counts.isError ? (
-          <ErrorState onRetry={() => void counts.refetch()} />
-        ) : (counts.data?.data.length ?? 0) === 0 ? (
-          <EmptyState icon="clipboard" title={t("empty")} body={t("emptyBody")} />
-        ) : (
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {counts.data?.data.map((count) => (
+      {counts.isLoading ? (
+        <ListSkeleton rows={4} />
+      ) : counts.isError ? (
+        <ErrorState onRetry={() => void counts.refetch()} />
+      ) : (counts.data?.data.length ?? 0) === 0 ? (
+        <EmptyState icon="clipboard" title={t("empty")} body={t("emptyBody")} />
+      ) : (
+        <ul className="grid gap-2 sm:grid-cols-2" data-testid="opname-sessions">
+          {counts.data?.data.map((count) => {
+            const counted = count.lines.filter((line) => line.countedQty !== null).length;
+            const variance = count.lines.filter((line) => (line.variance ?? 0) !== 0).length;
+            return (
               <li key={count.id}>
                 <button
                   type="button"
@@ -130,462 +91,483 @@ export function OpnameView() {
                     <div className="min-w-0">
                       <p className="truncate text-sm font-extrabold">{count.name}</p>
                       <p className="truncate text-2xs text-muted-foreground">
-                        {count.locationPath}
+                        {count.locationPath ?? "—"}
                       </p>
                     </div>
-                    <Badge
-                      tone={
-                        count.status === "open"
-                          ? "warning"
-                          : count.status === "review"
-                            ? "info"
-                            : "success"
-                      }
-                    >
-                      {count.status === "open"
-                        ? t("statusOpen")
-                        : count.status === "review"
-                          ? t("statusReview")
-                          : t("statusClosed")}
+                    <Badge tone={count.status === "open" ? "warning" : "success"}>
+                      {count.status === "open" ? t("statusOpen") : t("statusClosed")}
                     </Badge>
                   </div>
                   <div className="flex flex-wrap gap-1.5 text-2xs text-muted-foreground">
                     <span>{t("lines", { count: count.lines.length })}</span>
                     <span>·</span>
-                    <span>
-                      {t("counted", {
-                        count: count.lines.filter((line) => line.countedQty !== null).length,
-                      })}
-                    </span>
-                    <span>·</span>
-                    <span>
-                      {t("variances", {
-                        count: count.lines.filter((line) => (line.variance ?? 0) !== 0).length,
-                      })}
-                    </span>
-                    {count.blind ? <Badge tone="neutral">{t("blindLabel")}</Badge> : null}
+                    <span>{t("counted", { count: counted })}</span>
+                    {variance > 0 ? (
+                      <>
+                        <span>·</span>
+                        <span className="font-bold text-danger-foreground">
+                          {t("variances", { count: variance })}
+                        </span>
+                      </>
+                    ) : null}
                   </div>
                 </button>
               </li>
-            ))}
-          </ul>
-        )
-      ) : null}
-
-      {tab === "variances" ? (
-        variances.isLoading ? (
-          <ListSkeleton rows={4} />
-        ) : (variances.data?.data.length ?? 0) === 0 ? (
-          <EmptyState icon="shieldCheck" title={t("emptyVariance")} body={t("emptyVarianceBody")} />
-        ) : (
-          <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
-            {variances.data?.data.map((verification) => (
-              <VarianceRow
-                key={verification.id}
-                verification={verification}
-                locale={locale}
-                onReviewed={() => void variances.refetch()}
-              />
-            ))}
-          </ul>
-        )
-      ) : null}
-
-      {tab === "needs" ? (
-        reports.isLoading ? (
-          <ListSkeleton rows={5} />
-        ) : (reports.data?.confidence.needsCount.length ?? 0) === 0 ? (
-          <EmptyState
-            icon="badgeCheck"
-            title={t("emptyNeedsCount")}
-            body={t("emptyNeedsCountBody")}
-          />
-        ) : (
-          <>
-            <Button size="sm" variant="soft" onClick={() => setCreateOpen(true)}>
-              <Icon name="plus" className="size-4" />
-              {t("createFromNeeds")}
-            </Button>
-            <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
-              {reports.data?.confidence.needsCount.map((row) => (
-                <li
-                  key={`${row.itemId}-${row.locationPath}`}
-                  className="flex items-center gap-3 px-4 py-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold">{row.itemName}</p>
-                    <p className="truncate text-2xs text-muted-foreground">{row.locationPath}</p>
-                  </div>
-                  <span className="tnum text-[13px] font-bold text-muted-foreground">
-                    {formatQty(row.qty, locale)}
-                  </span>
-                  <Badge tone="danger">{t("needsCountScore", { score: row.score })}</Badge>
-                </li>
-              ))}
-            </ul>
-          </>
-        )
-      ) : null}
+            );
+          })}
+        </ul>
+      )}
 
       <CreateCountDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        zones={(meta.data?.locations ?? []).filter((location) => location.type === "zone")}
+        onCreated={(created) => setOpenCount(created)}
       />
 
-      {openCount ? <CountSheet count={openCount} onClose={() => setOpenCount(null)} /> : null}
+      {shown ? (
+        <CountSheet
+          count={shown}
+          onClose={() => setOpenCount(null)}
+          onChanged={() => void counts.refetch()}
+        />
+      ) : null}
     </div>
   );
 }
 
-function VarianceRow({
-  verification,
-  locale,
-  onReviewed,
+/** Dialog sesi baru: cukup pilih lokasi, opsional beri nama. */
+function CreateCountDialog({
+  open,
+  onOpenChange,
+  onCreated,
 }: {
-  verification: Verification;
-  locale: string;
-  onReviewed: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: (count: StockCountRow) => void;
 }) {
   const t = useTranslations("opname");
   const queryClient = useQueryClient();
-  const [rejectOpen, setRejectOpen] = React.useState(false);
-  const [note, setNote] = React.useState("");
 
-  const review = useMutation({
-    mutationFn: (input: { decision: "approved" | "rejected"; note?: string }) =>
-      api.verify.review(verification.id, input.decision, input.note),
-    onSuccess: () => {
-      toast.success(t("approved", { count: 1 }));
-      void queryClient.invalidateQueries({ queryKey: keys.verifyQueue });
-      void queryClient.invalidateQueries({ queryKey: keys.dashboard });
-      onReviewed();
+  const meta = useQuery({
+    queryKey: keys.meta,
+    queryFn: () => api.master.meta(),
+    staleTime: 5 * 60_000,
+    enabled: open,
+  });
+
+  const [locationId, setLocationId] = React.useState("");
+  const [name, setName] = React.useState("");
+  const locations = meta.data?.locations ?? [];
+
+  const create = useMutation({
+    mutationFn: () => api.counts.create({ locationId, name: name.trim() || undefined }),
+    onSuccess: async (result) => {
+      setLocationId("");
+      setName("");
+      onOpenChange(false);
+      const list = await queryClient.fetchQuery({
+        queryKey: keys.counts,
+        queryFn: () => api.counts.list(),
+        staleTime: 0,
+      });
+      const created = (list.data ?? []).find((c) => c.id === result.count?.id);
+      if (created) onCreated(created);
+      toast.success(t("sessionCreated"));
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : "Gagal menyimpan keputusan."),
+      toast.error(error instanceof ApiError ? error.message : t("sessionCreateFailed")),
   });
 
   return (
-    <li className="flex flex-col gap-2 p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-bold">{verification.itemName}</p>
-          <p className="truncate text-2xs text-muted-foreground">{verification.locationPath}</p>
-        </div>
-        <Badge tone="warning">{t("pendingReview")}</Badge>
-      </div>
-      <div className="grid grid-cols-3 gap-2 rounded-xl bg-muted/60 p-2.5 text-center">
-        <div>
-          <p className="text-2xs text-muted-foreground">{t("systemQty")}</p>
-          <p className="tnum text-sm font-extrabold">{verification.systemQty}</p>
-        </div>
-        <div>
-          <p className="text-2xs text-muted-foreground">{t("countedQty")}</p>
-          <p className="tnum text-sm font-extrabold">{verification.countedQty ?? "—"}</p>
-        </div>
-        <div>
-          <p className="text-2xs text-muted-foreground">{t("variance")}</p>
-          <p
-            className={cn(
-              "tnum text-sm font-extrabold",
-              (verification.variance ?? 0) < 0
-                ? "text-danger-foreground"
-                : "text-success-foreground",
-            )}
-          >
-            {(verification.variance ?? 0) > 0 ? "+" : ""}
-            {verification.variance ?? 0}
-          </p>
-        </div>
-      </div>
-      <p className="text-2xs text-muted-foreground">
-        {verification.userName} · {relativeTime(verification.createdAt, locale)} ·{" "}
-        {verification.mode === "blind" ? t("blindLabel") : t("sourcePickPrompt")}
-      </p>
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          className="h-10 flex-1"
-          onClick={() => review.mutate({ decision: "approved" })}
-          disabled={review.isPending}
-        >
-          <Icon name="check" className="size-4" />
-          {t("approve")}
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          className="h-10 flex-1"
-          onClick={() => setRejectOpen(true)}
-        >
-          {t("reject")}
-        </Button>
-      </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent data-testid="opname-create-dialog">
+        <DialogHeader>
+          <DialogTitle>{t("newSessionTitle")}</DialogTitle>
+          <DialogDescription>{t("newSessionBody")}</DialogDescription>
+        </DialogHeader>
 
-      <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("rejectTitle")}</DialogTitle>
-            <DialogDescription>{t("rejectBody")}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-1.5">
-            <Label htmlFor="reject-note">{t("rejectReason")}</Label>
-            <Input
-              id="reject-note"
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-            />
+        {locations.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-border bg-muted/40 p-3 text-2xs leading-relaxed text-muted-foreground">
+            {t("noLocationsHint")}
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="opname-location" className="text-[13px] font-bold">
+                {t("locationLabel")}
+              </Label>
+              <select
+                id="opname-location"
+                data-testid="opname-location"
+                value={locationId}
+                onChange={(event) => setLocationId(event.target.value)}
+                className="h-12 w-full rounded-[14px] border border-input bg-card px-3 text-base font-semibold"
+              >
+                <option value="">{t("locationPlaceholder")}</option>
+                {locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="opname-name" className="text-[13px] font-bold">
+                {t("nameLabel")}
+              </Label>
+              <Input
+                id="opname-name"
+                data-testid="opname-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder={t("namePlaceholder")}
+              />
+            </div>
           </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setRejectOpen(false)}>
-              Batal
-            </Button>
-            <Button
-              variant="danger"
-              disabled={note.trim().length === 0 || review.isPending}
-              onClick={() =>
-                review.mutate(
-                  { decision: "rejected", note: note.trim() },
-                  {
-                    onSuccess: () => {
-                      setRejectOpen(false);
-                      toast.success(t("rejectDone"));
-                    },
-                  },
-                )
-              }
-            >
-              {t("reject")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </li>
+        )}
+
+        <DialogFooter>
+          <Button variant="secondary" onClick={() => onOpenChange(false)}>
+            {t("cancel")}
+          </Button>
+          <Button
+            data-testid="opname-create-submit"
+            onClick={() => create.mutate()}
+            disabled={!locationId || create.isPending || locations.length === 0}
+          >
+            {create.isPending ? t("creating") : t("create")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function CountSheet({ count, onClose }: { count: StockCountRow; onClose: () => void }) {
+/** Isi hasil hitungan + riwayat transaksi per barang. */
+function CountSheet({
+  count,
+  onClose,
+  onChanged,
+}: {
+  count: StockCountRow;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
   const t = useTranslations("opname");
-  const queryClient = useQueryClient();
-  const [values, setValues] = React.useState<Record<string, string>>({});
+  const [expanded, setExpanded] = React.useState<string | null>(null);
 
-  const setLine = useMutation({
-    mutationFn: (input: { lineId: string; qty: number }) =>
-      api.counts.setLine(count.id, input.lineId, input.qty),
-    onSuccess: () => {
-      toast.success(t("lineSaved"));
-      void queryClient.invalidateQueries({ queryKey: keys.counts });
-    },
-    onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : "Gagal menyimpan baris."),
-  });
+  const setLine = useCountLine(count.id, onChanged);
+  const approve = useApproveCount(count.id, onClose);
 
-  const approve = useMutation({
-    mutationFn: () => api.counts.approve(count.id),
-    onSuccess: (result) => {
-      toast.success(t("approved", { count: result.adjusted }));
-      void queryClient.invalidateQueries({ queryKey: keys.counts });
-      void queryClient.invalidateQueries({ queryKey: keys.dashboard });
-      onClose();
-    },
-    onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : "Gagal menyetujui."),
-  });
+  const open = count.status === "open";
+  const counted = count.lines.filter((line) => line.countedQty !== null).length;
+  const variance = count.lines.filter((line) => (line.variance ?? 0) !== 0).length;
 
   return (
-    <Sheet open onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="max-w-[560px]">
+    <Sheet open onOpenChange={(next) => !next && onClose()}>
+      <SheetContent className="max-w-[620px]">
         <SheetHeader>
           <SheetTitle>{count.name}</SheetTitle>
           <SheetDescription>
-            {count.locationPath} · {t("lines", { count: count.lines.length })}
+            {count.locationPath ? `${count.locationPath} · ` : ""}
+            {t("lines", { count: count.lines.length })} · {counted} {t("countedShort")}
+            {variance > 0 ? (
+              <span className="font-bold text-danger-foreground">
+                {" · "}
+                {t("variances", { count: variance })}
+              </span>
+            ) : null}
           </SheetDescription>
         </SheetHeader>
 
         {count.lines.length === 0 ? (
           <p className="text-[13px] text-muted-foreground">{t("noLines")}</p>
         ) : (
-          <ul className="divide-y divide-border">
+          <ul className="divide-y divide-border" data-testid="opname-lines">
             {count.lines.map((line) => (
-              <li key={line.id} className="flex flex-col gap-2 py-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-[13px] font-bold">{line.itemName}</p>
-                    <p className="truncate text-2xs text-muted-foreground">{line.locationPath}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-2xs text-muted-foreground">{t("systemQty")}</p>
-                    <p className="tnum text-sm font-extrabold">
-                      {count.blind ? "•••" : line.systemQty}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    value={values[line.id] ?? line.countedQty ?? ""}
-                    onChange={(event) =>
-                      setValues((prev) => ({ ...prev, [line.id]: event.target.value }))
-                    }
-                    placeholder={t("enterQty")}
-                    className="h-10"
-                  />
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="h-10 shrink-0"
-                    disabled={values[line.id] === undefined || values[line.id] === ""}
-                    onClick={() =>
-                      setLine.mutate({ lineId: line.id, qty: Number(values[line.id]) })
-                    }
-                  >
-                    {t("saveLine")}
-                  </Button>
-                </div>
-                {line.countedQty !== null && line.variance !== null && line.variance !== 0 ? (
-                  <p
-                    className={cn(
-                      "tnum text-2xs font-bold",
-                      line.variance < 0 ? "text-danger-foreground" : "text-success-foreground",
-                    )}
-                  >
-                    {t("variance")}: {line.variance > 0 ? "+" : ""}
-                    {line.variance}
-                  </p>
-                ) : null}
-              </li>
+              <CountLineRow
+                key={line.id}
+                line={line}
+                open={open}
+                expanded={expanded === line.id}
+                onToggle={() => setExpanded(expanded === line.id ? null : line.id)}
+                onSave={(qty) => setLine.mutate({ lineId: line.id, qty })}
+                saving={setLine.isPending}
+              />
             ))}
           </ul>
         )}
 
-        <Button
-          block
-          size="lg"
-          className="mt-2"
-          onClick={() => approve.mutate()}
-          disabled={approve.isPending || count.status === "closed"}
-        >
-          <Icon name="check" className="size-5" />
-          {t("approve")}
-        </Button>
+        {open ? (
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4">
+            <p className="max-w-[60%] text-2xs leading-relaxed text-muted-foreground">
+              {t("approveHint")}
+            </p>
+            <Button
+              data-testid="opname-approve"
+              onClick={() => approve.mutate()}
+              disabled={approve.isPending || counted === 0}
+            >
+              {approve.isPending ? t("approving") : t("approve")}
+            </Button>
+          </div>
+        ) : (
+          <p className="mt-4 rounded-xl bg-success-soft p-3 text-2xs font-semibold text-success-foreground">
+            {t("sessionClosed")}
+          </p>
+        )}
       </SheetContent>
     </Sheet>
   );
 }
 
-function CreateCountDialog({
+function CountLineRow({
+  line,
   open,
-  onOpenChange,
-  zones,
+  expanded,
+  onToggle,
+  onSave,
+  saving,
 }: {
+  line: StockCountRow["lines"][number];
   open: boolean;
-  onOpenChange: (open: boolean) => void;
-  zones: { id: string; name: string; path: string }[];
+  expanded: boolean;
+  onToggle: () => void;
+  onSave: (qty: number) => void;
+  saving: boolean;
 }) {
   const t = useTranslations("opname");
-  const queryClient = useQueryClient();
-  const [zoneId, setZoneId] = React.useState("");
-  const router = useRouter();
-  const [name, setName] = React.useState("");
-  const [blind, setBlind] = React.useState(false);
+  const [draft, setDraft] = React.useState(line.countedQty?.toString() ?? "");
 
-  const create = useMutation({
-    mutationFn: () =>
-      api.counts.create({ zoneId, name: name || undefined, blind, source: "manual" }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: keys.counts });
-      onOpenChange(false);
-      setZoneId("");
-      setName("");
-      toast.success(t("create"));
-    },
-    onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : "Gagal membuat sesi."),
-  });
+  React.useEffect(() => {
+    if (line.countedQty !== null) setDraft(line.countedQty.toString());
+  }, [line.countedQty]);
+
+  const diff = line.countedQty === null ? null : line.countedQty - line.systemQty;
+  const canSave = open && draft.trim() !== "" && line.countedQty === null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t("newSessionTitle")}</DialogTitle>
-          <DialogDescription>{t("newSessionBody")}</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="zone">{t("zoneLabel")}</Label>
-            <select
-              id="zone"
-              value={zoneId}
-              onChange={(event) => setZoneId(event.target.value)}
-              className="h-12 w-full rounded-[14px] border border-input bg-card px-3 text-base"
-              disabled={zones.length === 0}
-            >
-              <option value="">{zones.length === 0 ? t("zoneEmpty") : t("zonePlaceholder")}</option>
-              {zones.map((zone) => (
-                <option key={zone.id} value={zone.id}>
-                  {zone.path}
-                </option>
-              ))}
-            </select>
-            {/*
-              Opname dihitung per zona, jadi zona WAJIB ada. Sebelumnya dropdown
-              kosong tanpa penjelasan dan tombol Simpan mati begitu saja —
-              pengguna tidak tahu harus ke mana. Sekarang ada penjelasan dan
-              tombol yang langsung mengantar ke halaman pembuatan zona.
-            */}
-            {zones.length === 0 ? (
-              <div className="space-y-2 rounded-xl border border-dashed border-border bg-muted/40 p-3">
-                <p className="text-2xs leading-relaxed text-muted-foreground">
-                  {t("zoneEmptyHint")}
-                </p>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  data-testid="opname-create-zone"
-                  onClick={() => {
-                    onOpenChange(false);
-                    router.push("/app/database/lokasi?new=1&type=zone");
-                  }}
-                >
-                  <Icon name="plus" className="size-4" />
-                  {t("zoneCreate")}
-                </Button>
-              </div>
-            ) : null}
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="count-name">{t("nameLabel")}</Label>
-            <Input
-              id="count-name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder={t("newSessionTitle")}
-            />
-          </div>
-          <label className="flex items-center justify-between gap-3 rounded-xl border border-border p-3">
-            <span>
-              <span className="block text-sm font-bold">{t("blindLabel")}</span>
-              <span className="block text-2xs text-muted-foreground">{t("blindHint")}</span>
-            </span>
-            <Switch checked={blind} onCheckedChange={setBlind} />
-          </label>
+    <li className="py-3">
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-bold">{line.itemName}</p>
+          <p className="truncate font-mono text-2xs text-muted-foreground">{line.itemCode}</p>
         </div>
-        <DialogFooter>
-          <Button variant="secondary" onClick={() => onOpenChange(false)}>
-            Batal
-          </Button>
-          <Button
-            onClick={() => create.mutate()}
-            disabled={!zoneId || create.isPending}
-            title={!zoneId ? t("zoneRequired") : undefined}
-          >
-            {t("create")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+
+        <div className="w-14 text-right">
+          <p className="text-2xs text-muted-foreground">{t("systemQty")}</p>
+          <p className="tnum text-[13px] font-bold">
+            {line.systemQty} {line.unitSymbol ?? ""}
+          </p>
+        </div>
+
+        {open ? (
+          <div className="flex w-36 items-center gap-1.5">
+            <Input
+              type="number"
+              min={0}
+              inputMode="numeric"
+              aria-label={`${t("countedQty")}: ${line.itemName}`}
+              data-testid={`opname-line-${line.id}`}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder={t("enterQty")}
+              className="h-10"
+            />
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-10 shrink-0"
+              disabled={!canSave || saving}
+              aria-label={t("saveLine")}
+              onClick={() => onSave(Number(draft))}
+            >
+              <Icon name="check" className="size-4" />
+            </Button>
+          </div>
+        ) : (
+          <div className="w-14 text-right">
+            <p className="text-2xs text-muted-foreground">{t("countedQty")}</p>
+            <p className="tnum text-[13px] font-bold">{line.countedQty ?? "—"}</p>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-label={t("history")}
+          data-testid={`opname-history-toggle-${line.id}`}
+          className={cn(
+            "flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-2 text-2xs font-bold transition-colors",
+            expanded
+              ? "border-primary bg-primary-soft text-primary"
+              : "border-border text-muted-foreground hover:border-border-strong hover:bg-muted hover:text-foreground",
+          )}
+          title={t("history")}
+        >
+          <Icon name="history" className="size-4" />
+          <span className="hidden sm:inline">{t("history")}</span>
+        </button>
+      </div>
+
+      {diff !== null && diff !== 0 ? (
+        <p
+          className={cn(
+            "mt-1 text-right text-2xs font-bold",
+            diff < 0 ? "text-danger-foreground" : "text-success-foreground",
+          )}
+        >
+          {t("variance")}: {diff > 0 ? "+" : ""}
+          {diff}
+        </p>
+      ) : null}
+
+      {expanded ? <LineHistory itemId={line.itemId} /> : null}
+    </li>
   );
+}
+
+/** Transaksi terakhir barang ini — konteks saat angka tidak cocok. */
+const TX_TONE: Record<string, "success" | "warning" | "danger" | "info" | "neutral"> = {
+  issue: "warning",
+  return: "success",
+  receive: "info",
+  consume: "neutral",
+  adjust: "info",
+  reversal: "danger",
+  transfer: "neutral",
+};
+
+const TX_COLLAPSED = 6;
+
+/** Arah stok dari transaksi: keluar (−), masuk (+), atau pindah (⇄). */
+function txDirection(tx: { fromLocationId?: string | null; toLocationId?: string | null }): {
+  sign: "−" | "+" | "⇄";
+  cls: string;
+} {
+  const out = Boolean(tx.fromLocationId);
+  const in_ = Boolean(tx.toLocationId);
+  if (out && in_) return { sign: "⇄", cls: "text-info-foreground" };
+  if (out) return { sign: "−", cls: "text-danger-foreground" };
+  return { sign: "+", cls: "text-success-foreground" };
+}
+
+function LineHistory({ itemId }: { itemId: string }) {
+  const t = useTranslations("opname");
+  const th = useTranslations("history");
+  const locale = useLocale();
+  const [showAll, setShowAll] = React.useState(false);
+
+  const history = useQuery({
+    queryKey: keys.itemTx(itemId),
+    queryFn: () => api.items.transactions(itemId),
+  });
+
+  if (history.isLoading)
+    return (
+      <div className="mt-3">
+        <ListSkeleton rows={2} />
+      </div>
+    );
+  if (history.isError) {
+    return (
+      <p className="mt-3 rounded-xl border border-dashed border-border p-2.5 text-2xs text-muted-foreground">
+        {t("historyEmpty")}
+      </p>
+    );
+  }
+  const all = history.data?.data ?? [];
+  if (all.length === 0) {
+    return (
+      <p className="mt-3 rounded-xl border border-dashed border-border p-2.5 text-2xs text-muted-foreground">
+        {t("historyEmpty")}
+      </p>
+    );
+  }
+  const rows = showAll ? all : all.slice(0, TX_COLLAPSED);
+
+  return (
+    <div className="mt-2 rounded-xl border border-border bg-card p-3">
+      <p className="mb-1.5 text-2xs font-bold uppercase tracking-wide text-muted-foreground">
+        {t("historyTitle")}
+      </p>
+      <ul className="space-y-1.5">
+        {rows.map((row) => {
+          const dir = txDirection(row);
+          return (
+            <li
+              key={row.id}
+              data-testid={`opname-history-row-${row.id}`}
+              className="flex items-start justify-between gap-2 rounded-lg bg-muted/60 px-2.5 py-2 text-xs ring-1 ring-border/60"
+            >
+              <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                <Badge tone={TX_TONE[row.type] ?? "neutral"} className="shrink-0">
+                  {th(`type${row.type.charAt(0).toUpperCase()}${row.type.slice(1)}` as "typeIssue")}
+                </Badge>
+                <span className={cn("tnum font-extrabold", dir.cls)}>
+                  {dir.sign}
+                  {formatQty(Math.abs(row.qty), locale)}
+                </span>
+                {row.note || row.refNo ? (
+                  <span className="min-w-0 truncate text-foreground/80">
+                    {row.note ?? row.refNo}
+                  </span>
+                ) : null}
+                {row.userName ? (
+                  <span className="shrink-0 text-2xs text-foreground/70">
+                    {t("historyBy", { name: row.userName })}
+                  </span>
+                ) : null}
+              </span>
+              <span className="tnum shrink-0 text-2xs text-foreground/70">
+                {relativeTime(row.createdAt, locale)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {all.length > TX_COLLAPSED ? (
+        <button
+          type="button"
+          data-testid="opname-history-expand"
+          onClick={() => setShowAll((v) => !v)}
+          className="mt-2 w-full rounded-lg py-1.5 text-2xs font-bold text-primary hover:bg-primary-soft"
+        >
+          {showAll ? t("historyShowLess") : t("historyShowAll", { count: all.length })}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function useCountLine(countId: string, onChanged: () => void) {
+  const t = useTranslations("opname");
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { lineId: string; qty: number }) =>
+      api.counts.setLine(countId, input.lineId, input.qty),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.counts });
+      onChanged();
+    },
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : t("lineSaveFailed")),
+  });
+}
+
+function useApproveCount(countId: string, onClose: () => void) {
+  const t = useTranslations("opname");
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.counts.approve(countId),
+    onSuccess: (result) => {
+      toast.success(t("approved", { count: result.adjusted }));
+      void queryClient.invalidateQueries({ queryKey: keys.counts });
+      void queryClient.invalidateQueries({ queryKey: keys.dashboard });
+      void queryClient.invalidateQueries({ queryKey: ["items"] });
+      onClose();
+    },
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : t("approveFailed")),
+  });
 }

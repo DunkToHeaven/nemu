@@ -8,7 +8,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type { AuthUser } from "@/server/auth";
-import { tenantPool, withTransaction } from "@/server/db";
+import { tenantPool, withTransaction, schemaFor } from "@/server/db";
 
 export type TxType = "issue" | "return" | "receive" | "transfer" | "adjust";
 
@@ -42,8 +42,14 @@ export async function issueStock(
   const txId = `tx_${randomUUID()}`;
   const db = tenantPool(tenant);
 
-  const rows = await db<{ ok: boolean; code: string; message: string; balance: number }[]>`
-    SELECT * FROM issue_stock(
+  // Fungsi dipanggil dengan prefix schema eksplisit. Tanpa ini, pencarian lewat
+  // search_path `tenant_x,public` menabrak dua definisi `issue_stock` (public
+  // warisan vs tenant) dan Postgres menolak: "function ... is not unique" (42725)
+  // — seluruh jalur issue gagal 500 di mode database.
+  const rows = await db<
+    { ok: boolean; code: string; message: string; balance: number }[]
+  >`
+    SELECT * FROM ${db(schemaFor(tenant))}.issue_stock(
       ${txId}, ${input.itemId}, ${input.locationId}, ${input.qty},
       ${user.id}, ${input.idempotencyKey}, ${input.reasonId ?? null},
       ${input.scanMethod ?? null}, ${input.refNo ?? null}, ${input.note ?? null}
@@ -85,6 +91,8 @@ export interface MoveInput {
   refNo?: string | null;
   note?: string | null;
   reversesId?: string | null;
+  /** Harga per unit — hanya diisi saat receive; disimpan ke transactions.unit_price. */
+  unitPrice?: number | null;
   /** Mesin/aset terkait (dipakai penutupan kustodi). */
   equipmentId?: string | null;
 }
@@ -124,12 +132,14 @@ export async function moveStock(
       await tx`
         INSERT INTO transactions (
           id, type, item_id, from_location_id, to_location_id, qty, user_id,
-          reason_id, ref_no, note, idempotency_key, reverses_id, equipment_id
+          reason_id, ref_no, note, idempotency_key, reverses_id, equipment_id,
+          unit_price
         ) VALUES (
           ${txId}, ${input.type}, ${input.itemId}, ${input.fromLocationId ?? null},
           ${input.toLocationId ?? null}, ${input.qty}, ${user.id},
           ${input.reasonId ?? null}, ${input.refNo ?? null}, ${input.note ?? null},
-          ${input.idempotencyKey}, ${input.reversesId ?? null}, ${input.equipmentId ?? null}
+          ${input.idempotencyKey}, ${input.reversesId ?? null}, ${input.equipmentId ?? null},
+          ${input.unitPrice ?? null}
         )
       `;
 

@@ -41,6 +41,8 @@ import {
   version,
 } from "@/mocks/handlers/master";
 import { dashboard, events, listStock, reports } from "@/mocks/handlers/read";
+import { reportDrill } from "@/mocks/handlers/report-drill";
+import { priceHistory } from "@/mocks/handlers/price-history";
 import {
   createTransaction,
   listCustody,
@@ -124,6 +126,8 @@ const routes: Route[] = [
   { method: "GET", pattern: "stock", handler: listStock },
   { method: "GET", pattern: "dashboard", handler: dashboard },
   { method: "GET", pattern: "reports", handler: reports },
+  { method: "GET", pattern: "reports/drill", handler: reportDrill },
+  { method: "GET", pattern: "reports/price-history", handler: priceHistory },
   { method: "GET", pattern: "events", handler: events },
 
   { method: "GET", pattern: "locations", handler: listLocations },

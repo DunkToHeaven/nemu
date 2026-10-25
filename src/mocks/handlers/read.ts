@@ -1,4 +1,5 @@
 import type { Item, RankedUsage, StockLevel, Transaction, UsagePoint } from "@/lib/types";
+import { inventoryHealthMock } from "@/mocks/handlers/report-drill";
 import type { ApiRequest, ApiResponse } from "@/mocks/http";
 import {
   normalize,
@@ -192,25 +193,6 @@ export function dashboard(req: ApiRequest): ApiResponse {
     (tx) => tx.type === "issue" && Date.parse(tx.createdAt) >= Date.now() - 30 * DAY,
   );
 
-  const system =
-    role === "admin"
-      ? {
-          version: "0.1.0",
-          activeUsers: data().users.filter((user) => user.active).length,
-          lastBackupAt: new Date(Date.now() - 6 * 3_600_000).toISOString(),
-          sheetsSync: data().google.connected ? "ok" : "disconnected",
-          pendingOutbox: data().google.runs.filter((run) => run.status === "pending").length,
-          uptimeHours: 128,
-          setupChecklist: [
-            { id: "admin", label: "Admin pertama dibuat", done: true },
-            { id: "items", label: "Item diimpor", done: true },
-            { id: "locations", label: "Lokasi dibuat", done: true },
-            { id: "labels", label: "Label QR dicetak", done: false },
-            { id: "google", label: "Google Drive terhubung", done: data().google.connected },
-          ],
-        }
-      : null;
-
   return ok({
     kpis,
     recent,
@@ -221,7 +203,6 @@ export function dashboard(req: ApiRequest): ApiResponse {
     topItems: topBy(issues30, "item", 5),
     custody: myCustody,
     teamCustodyCount: teamCustody.length,
-    system,
   });
 }
 
@@ -360,6 +341,7 @@ export function reports(req: ApiRequest): ApiResponse {
 
   return ok({
     rangeDays: days,
+    inventoryHealth: inventoryHealthMock(),
     trend,
     topItems: topBy(issues, "item", 10),
     byUser: topBy(issues, "user", 10),

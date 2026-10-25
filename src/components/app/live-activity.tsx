@@ -145,7 +145,7 @@ export function LiveActivity() {
               : event.type === "verification.created"
                 ? `Verifikasi: ${payload.result ?? "tercatat"}`
                 : event.type === "custody.changed"
-                  ? `Dibawa: ${payload.status ?? ""}`
+                  ? `Kustodi: ${payload.status ?? ""}`
                   : `${event.type} · ${payload.status ?? ""}`;
         return (
           <li key={event.id} className="flex items-start gap-2">

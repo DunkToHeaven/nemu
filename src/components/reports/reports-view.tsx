@@ -2,11 +2,14 @@
 
 import { useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import * as React from "react";
 import { EmptyState, ErrorState, KpiSkeleton } from "@/components/app/states";
 import { WidgetBoundary } from "@/components/app/widget";
 import { Icon } from "@/components/icons";
+import { PriceHistoryWidget } from "@/components/reports/price-history-widget";
+import { type DrillTarget, ReportDrillSheet } from "@/components/reports/reports-drill";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,10 +30,19 @@ export function ReportsView() {
   const t = useTranslations("reports");
   const locale = useLocale();
   const [days, setDays] = React.useState(30);
+  const [drill, setDrill] = React.useState<DrillTarget | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: keys.reports(days),
     queryFn: () => api.reports(days),
+  });
+
+  // Tren harga butuh jendela lebih lebar dari periode laporan supaya perubahan
+  // antar tanggal terlihat; minimal 90 hari.
+  const priceDays = Math.max(days, 90);
+  const priceHistory = useQuery({
+    queryKey: keys.priceHistory(priceDays),
+    queryFn: () => api.priceHistory({ days: priceDays }),
   });
 
   if (isLoading) return <KpiSkeleton />;
@@ -103,9 +115,19 @@ export function ReportsView() {
                 ["neverCounted", health.neverCounted, "neutral", "clipboard"],
               ] as const
             ).map(([key, value, tone, icon]) => (
-              <div
+              <button
                 key={key}
-                className="flex items-center gap-2.5 rounded-xl border border-border bg-card p-3"
+                type="button"
+                data-testid={`drill-card-${key}`}
+                onClick={() =>
+                  setDrill({
+                    kind: key,
+                    label: t(
+                      `health${key.charAt(0).toUpperCase()}${key.slice(1)}` as "healthBelowMin",
+                    ),
+                  })
+                }
+                className="flex items-center gap-2.5 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:border-border-strong hover:bg-muted/40"
               >
                 <span
                   className={cn(
@@ -124,7 +146,7 @@ export function ReportsView() {
                     {t(`health${key.charAt(0).toUpperCase()}${key.slice(1)}` as "healthBelowMin")}
                   </p>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
 
@@ -134,39 +156,60 @@ export function ReportsView() {
               <div className="flex h-3 overflow-hidden rounded-full bg-muted">
                 {(
                   [
-                    [health.healthy, "bg-success"],
-                    [health.belowMin, "bg-danger"],
-                    [health.overMax, "bg-warning"],
-                    [health.noThreshold, "bg-muted-foreground/40"],
+                    ["healthy", health.healthy, "bg-success"],
+                    ["belowMin", health.belowMin, "bg-danger"],
+                    ["overMax", health.overMax, "bg-warning"],
+                    ["noThreshold", health.noThreshold, "bg-muted-foreground/40"],
                   ] as const
-                ).map(([value, cls], index) =>
+                ).map(([kind, value, cls]) =>
                   value > 0 ? (
-                    <span
-                      key={index}
-                      className={cls}
+                    <button
+                      key={kind}
+                      type="button"
+                      aria-label={`${t(`health${kind.charAt(0).toUpperCase()}${kind.slice(1)}` as "healthHealthy")} (${value})`}
+                      className={cn(cls, "cursor-pointer transition-opacity hover:opacity-80")}
                       style={{ width: `${(value / Math.max(1, health.total)) * 100}%` }}
                       title={`${value}`}
+                      onClick={() =>
+                        setDrill({
+                          kind,
+                          label: t(
+                            `health${kind.charAt(0).toUpperCase()}${kind.slice(1)}` as "healthHealthy",
+                          ),
+                        })
+                      }
                     />
                   ) : null,
                 )}
               </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <span className="size-2 rounded-full bg-success" /> {t("healthHealthy")}{" "}
-                  {health.healthy}
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="size-2 rounded-full bg-danger" /> {t("healthBelowMin")}{" "}
-                  {health.belowMin}
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="size-2 rounded-full bg-warning" /> {t("healthOverMax")}{" "}
-                  {health.overMax}
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="size-2 rounded-full bg-muted-foreground/40" />{" "}
-                  {t("healthNoThreshold")} {health.noThreshold}
-                </span>
+              <div className="flex flex-wrap gap-x-2 gap-y-1 text-2xs text-muted-foreground">
+                {(
+                  [
+                    ["healthy", health.healthy, "bg-success"],
+                    ["belowMin", health.belowMin, "bg-danger"],
+                    ["overMax", health.overMax, "bg-warning"],
+                    ["noThreshold", health.noThreshold, "bg-muted-foreground/40"],
+                  ] as const
+                ).map(([kind, value, cls]) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    data-testid={`drill-legend-${kind}`}
+                    className="flex cursor-pointer items-center gap-1 rounded-full px-1.5 py-0.5 transition-colors hover:bg-muted"
+                    onClick={() =>
+                      setDrill({
+                        kind,
+                        label: t(
+                          `health${kind.charAt(0).toUpperCase()}${kind.slice(1)}` as "healthHealthy",
+                        ),
+                      })
+                    }
+                  >
+                    <span className={cn("size-2 rounded-full", cls)} />
+                    {t(`health${kind.charAt(0).toUpperCase()}${kind.slice(1)}` as "healthHealthy")}{" "}
+                    {value}
+                  </button>
+                ))}
               </div>
             </div>
           ) : null}
@@ -232,7 +275,20 @@ export function ReportsView() {
               ] as const
             ).map(([key, value, tone]) => (
               <li key={key} className="space-y-1">
-                <div className="flex items-center justify-between text-[13px]">
+                <button
+                  type="button"
+                  data-testid={`drill-confidence-${key}`}
+                  className="flex w-full items-center justify-between rounded-lg px-1 text-[13px] transition-colors hover:bg-muted/60"
+                  onClick={() =>
+                    setDrill({
+                      kind: "conf",
+                      id: key,
+                      label: t(
+                        `confidence${key.charAt(0).toUpperCase()}${key.slice(1)}` as "confidenceHigh",
+                      ),
+                    })
+                  }
+                >
                   <span className="flex items-center gap-1.5 font-semibold">
                     <Badge tone={tone}>
                       {t(
@@ -241,7 +297,7 @@ export function ReportsView() {
                     </Badge>
                   </span>
                   <span className="tnum font-bold">{pct(value)}%</span>
-                </div>
+                </button>
                 <div className="h-2 overflow-hidden rounded-full bg-muted">
                   <div
                     className={cn(
@@ -266,15 +322,30 @@ export function ReportsView() {
         </WidgetBoundary>
 
         <WidgetBoundary title={t("topItems")}>
-          <RankedList rows={data.topItems} empty={t("empty")} />
+          <RankedList
+            rows={data.topItems}
+            empty={t("empty")}
+            drillKind="topItem"
+            onSelect={setDrill}
+          />
         </WidgetBoundary>
 
         <WidgetBoundary title={t("byUser")}>
-          <RankedList rows={data.byUser} empty={t("empty")} />
+          <RankedList
+            rows={data.byUser}
+            empty={t("empty")}
+            drillKind="byUser"
+            onSelect={setDrill}
+          />
         </WidgetBoundary>
 
         <WidgetBoundary title={t("byReason")}>
-          <RankedList rows={data.byReason} empty={t("empty")} />
+          <RankedList
+            rows={data.byReason}
+            empty={t("empty")}
+            drillKind="byReason"
+            onSelect={setDrill}
+          />
         </WidgetBoundary>
 
         <WidgetBoundary title={t("custody")}>
@@ -291,7 +362,13 @@ export function ReportsView() {
             <p className="mb-1.5 text-2xs font-bold uppercase tracking-wide text-muted-foreground">
               {t("custodyByEquipment")}
             </p>
-            <RankedList rows={data.custody.byEquipment.slice(0, 5)} empty={t("empty")} compact />
+            <RankedList
+              rows={data.custody.byEquipment.slice(0, 5)}
+              empty={t("empty")}
+              compact
+              drillKind="byEquipment"
+              onSelect={setDrill}
+            />
           </div>
         </WidgetBoundary>
 
@@ -300,16 +377,19 @@ export function ReportsView() {
             <EmptyState icon="badgeCheck" title={t("empty")} body={t("emptyBody")} />
           ) : (
             <ul className="divide-y divide-border">
-              {data.confidence.needsCount.slice(0, 8).map((row) => (
-                <li
-                  key={`${row.itemId}-${row.locationPath}`}
-                  className="flex items-center gap-3 py-2"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-bold">{row.itemName}</p>
-                    <p className="truncate text-2xs text-muted-foreground">{row.locationPath}</p>
-                  </div>
-                  <Badge tone="danger">{row.score}</Badge>
+              {data.confidence.needsCount.slice(0, 8).map((row, index) => (
+                <li key={`${row.itemId ?? "row"}-${row.locationPath ?? ""}-${index}`}>
+                  <Link
+                    href={`/app/item/${row.itemId}`}
+                    data-testid={`drill-needs-${row.itemId}`}
+                    className="flex items-center gap-3 rounded-lg py-2 transition-colors hover:bg-muted/60"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-bold">{row.itemName}</p>
+                      <p className="truncate text-2xs text-muted-foreground">{row.locationPath}</p>
+                    </div>
+                    <Badge tone="danger">{row.score}</Badge>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -323,20 +403,32 @@ export function ReportsView() {
           ) : (
             <ul className="divide-y divide-border">
               {data.deadStock.slice(0, 6).map((row) => (
-                <li key={row.itemId} className="flex items-center gap-2 py-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-bold">{row.name}</p>
-                    <p className="text-2xs text-muted-foreground">
-                      {row.lastMovedAt ? relativeTime(row.lastMovedAt, locale) : "—"}
-                    </p>
-                  </div>
-                  <span className="tnum text-2xs font-bold text-muted-foreground">{row.qty}</span>
+                <li key={row.itemId}>
+                  <Link
+                    href={`/app/item/${row.itemId}`}
+                    data-testid={`drill-dead-${row.itemId}`}
+                    className="flex items-center gap-2 rounded-lg py-2 transition-colors hover:bg-muted/60"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-bold">{row.name}</p>
+                      <p className="text-2xs text-muted-foreground">
+                        {row.lastMovedAt ? relativeTime(row.lastMovedAt, locale) : "—"}
+                      </p>
+                    </div>
+                    <span className="tnum text-2xs font-bold text-muted-foreground">{row.qty}</span>
+                  </Link>
                 </li>
               ))}
             </ul>
           )}
         </WidgetBoundary>
+
+        <WidgetBoundary title={t("priceHistory")} className="lg:col-span-2">
+          <PriceHistoryWidget data={priceHistory.data} loading={priceHistory.isLoading} />
+        </WidgetBoundary>
       </div>
+
+      <ReportDrillSheet target={drill} days={days} onClose={() => setDrill(null)} />
     </div>
   );
 }
@@ -345,25 +437,41 @@ function RankedList({
   rows,
   empty,
   compact = false,
+  drillKind,
+  onSelect,
 }: {
   rows: { id: string; label: string; qty: number; tx: number }[];
   empty: string;
   compact?: boolean;
+  /** kind drill-down; baris jadi tombol yang membuka daftar transaksi. */
+  drillKind?: "topItem" | "byUser" | "byReason" | "byEquipment";
+  onSelect?: (target: { kind: string; id: string; label: string }) => void;
 }) {
   if (rows.length === 0)
     return <p className="py-3 text-center text-2xs text-muted-foreground">{empty}</p>;
   return (
     <ol className="space-y-1.5">
       {rows.map((row, index) => (
-        <li key={row.id} className="flex items-center gap-2 text-[13px]">
-          <span className="grid size-5 shrink-0 place-items-center rounded-full bg-muted text-2xs font-bold">
-            {index + 1}
-          </span>
-          <span className="min-w-0 flex-1 truncate font-semibold">{row.label}</span>
-          <span className="tnum shrink-0 text-2xs font-bold text-muted-foreground">
-            {row.qty}
-            {compact ? "" : ` · ${row.tx}×`}
-          </span>
+        <li key={row.id}>
+          <button
+            type="button"
+            data-testid={drillKind ? `drill-row-${drillKind}-${row.id}` : undefined}
+            disabled={!drillKind || !onSelect}
+            onClick={() => onSelect?.({ kind: drillKind ?? "", id: row.id, label: row.label })}
+            className={cn(
+              "flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left text-[13px]",
+              drillKind && onSelect && "transition-colors hover:bg-muted/60",
+            )}
+          >
+            <span className="grid size-5 shrink-0 place-items-center rounded-full bg-muted text-2xs font-bold">
+              {index + 1}
+            </span>
+            <span className="min-w-0 flex-1 truncate font-semibold">{row.label}</span>
+            <span className="tnum shrink-0 text-2xs font-bold text-muted-foreground">
+              {row.qty}
+              {compact ? "" : ` · ${row.tx}×`}
+            </span>
+          </button>
         </li>
       ))}
     </ol>

@@ -19,6 +19,7 @@ import {
   bulkItems,
   createItem,
   itemByCode,
+  itemById,
   listItems,
   searchItems,
   updateItem,
@@ -58,6 +59,8 @@ import {
   handleForgotPassword,
   handleResetPassword,
 } from "@/server/handlers/password-reset";
+import { getPriceHistory } from "@/server/handlers/price-history";
+import { getReportDrill } from "@/server/handlers/report-drill";
 import { checkEmail, handleSignup } from "@/server/handlers/signup";
 import {
   createTransaction,
@@ -182,6 +185,7 @@ async function dispatchDb(request: NextRequest, segments: string[]): Promise<Res
     if (second && third === "transactions" && method === "GET") {
       return itemTransactions(request, second);
     }
+    if (second && !third && method === "GET") return itemById(request, second);
     if (second && method === "PATCH") return updateItem(request, second);
   }
 
@@ -228,6 +232,12 @@ async function dispatchDb(request: NextRequest, segments: string[]): Promise<Res
   if (head === "dashboard" && method === "GET") {
     const s = await requireSessionOrThrow();
     return getDashboard(s.user, s.tenant);
+  }
+  if (head === "reports" && second === "drill" && method === "GET") {
+    return getReportDrill(request, await tenantOf());
+  }
+  if (head === "reports" && second === "price-history" && method === "GET") {
+    return getPriceHistory(request, await tenantOf());
   }
   if (head === "reports" && method === "GET") return getReports(request, await tenantOf());
   if (head === "stock" && method === "GET") return getStock(request, await tenantOf());
@@ -314,9 +324,45 @@ async function dispatchDb(request: NextRequest, segments: string[]): Promise<Res
 
 async function dispatch(request: NextRequest, segments: string[]): Promise<NextResponse> {
   if (!dbEnabled() || isControlPath(segments)) return dispatchMock(request, segments);
-  const response = await dispatchDb(request, segments);
-  if (!response.headers.has("X-Nemu-Source")) response.headers.set("X-Nemu-Source", "database");
-  return response as NextResponse;
+  try {
+    const response = await dispatchDb(request, segments);
+    if (!response.headers.has("X-Nemu-Source")) response.headers.set("X-Nemu-Source", "database");
+    return response as NextResponse;
+  } catch (error) {
+    /**
+     * Pooler Supabase (Supavisor) kadang memutus koneksi idle secara diam-diam;
+     * permintaan pertama setelah itu gagal dengan ECONNRESET/ETIMEDOUT, bukan
+     * karena kredensial atau datanya salah. Pengguna melihat "Terjadi kesalahan
+     * pada server" padahal menekan simpan ulang saja sudah berhasil — dan
+     * tombol login terasa "selalu gagal" padahal sandinya benar.
+     *
+     * Untuk kesalahan jaringan murni, ulangi SEKALI. Permintaan yang menyentuh
+     * database hanya boleh diulang bila idempoten (login dan pembacaan memang
+     * begitu); penulis memakai idempotency key sehingga aman.
+     */
+    if (!isTransientDbError(error)) throw error;
+    console.warn("[api] koneksi pooler terputus, mencoba sekali lagi…");
+    const retry = await dispatchDb(request, segments);
+    if (!retry.headers.has("X-Nemu-Source")) retry.headers.set("X-Nemu-Source", "database");
+    return retry as NextResponse;
+  }
+}
+
+/** Bedakan kegagalan jaringan (layak diulang) dari kesalahan nyata. */
+function isTransientDbError(error: unknown): boolean {
+  const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+  const message = error instanceof Error ? error.message : "";
+  const transient = [
+    "ECONNRESET",
+    "ECONNREFUSED",
+    "ETIMEDOUT",
+    "EPIPE",
+    "ENOTFOUND",
+    "57P01", // admin shutdown
+    "57P02", // crash shutdown
+    "08", // class/connection excepted
+  ];
+  return transient.some((t) => code.startsWith(t) || message.includes(t));
 }
 
 const wrapped = handle(async (request: NextRequest, context: Context) => {

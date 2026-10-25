@@ -186,6 +186,16 @@
     border-radius: 4px;
   }
 
+  /* Recharts menempel tabindex="0" pada SVG grafiknya. Klik di card tren
+     memindahkan fokus ke SVG itu dan browser menggambar outline default
+     (kotak hitam 5px) mengelilingi grafik. Grafik tidak punya kontrol yang
+     bisa dioperasikan lewat fokus, jadi outline dihilangkan; tautan dan
+     tombol di dalam card tetap dapat ring keyboard :focus-visible. */
+  .recharts-wrapper :is(svg, .recharts-surface):focus,
+  .recharts-wrapper :is(svg, .recharts-surface):focus-visible {
+    outline: none;
+  }
+
   input,
   textarea,
   select,

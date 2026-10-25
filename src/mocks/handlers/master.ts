@@ -599,18 +599,18 @@ export function createCount(req: ApiRequest): ApiResponse {
   const actor = requireRole(req, "supervisor");
   const body = req.body as {
     zoneId?: string;
+    locationId?: string;
     name?: string;
     blind?: boolean;
     source?: "manual" | "needs_count";
   } | null;
-  const zone = data().locations.find((location) => location.id === body?.zoneId);
-  if (!zone) throw new HttpError(422, "VALIDATION_ERROR", "Pilih zona untuk opname.");
+  // Lokasi berdiri sendiri (datar): yang dihitung adalah barang di lokasi itu.
+  const targetId = body?.locationId ?? body?.zoneId;
+  const zone = data().locations.find((location) => location.id === targetId);
+  if (!zone) throw new HttpError(422, "VALIDATION_ERROR", "Pilih lokasi untuk opname.");
 
-  const rackIds = data()
-    .locations.filter((location) => location.parentId === zone.id)
-    .map((location) => location.id);
   const lines: StockCountLine[] = data()
-    .stock.filter((level) => rackIds.includes(level.locationId))
+    .stock.filter((level) => level.locationId === zone.id)
     .slice(0, 40)
     .map((level, index) => {
       const item = data().items.find((entry) => entry.id === level.itemId);
@@ -732,7 +732,13 @@ export function meta(req: ApiRequest): ApiResponse {
     units: data().units,
     reasons: data().reasons,
     equipment: data().equipment,
-    locations: data().locations.map(({ id, name, path, type }) => ({ id, name, path, type })),
+    locations: data().locations.map(({ id, name, code, path, type }) => ({
+      id,
+      name,
+      code,
+      path,
+      type,
+    })),
   });
 }
 

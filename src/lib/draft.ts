@@ -8,6 +8,8 @@ export interface TakeDraft {
   reasonId: string;
   refNo: string;
   note: string;
+  /** Harga per unit (hanya relevan untuk receive). Opsional: draf lama aman. */
+  unitPrice?: string;
   savedAt: number;
 }
 

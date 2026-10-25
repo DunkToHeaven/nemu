@@ -257,64 +257,12 @@ export function LoginCard({
         </TabsContent>
       </Tabs>
 
-      <div className="flex items-center gap-3 text-[13px] text-muted-foreground">
-        <span className="h-px flex-1 bg-border" />
-        {t("or")}
-        <span className="h-px flex-1 bg-border" />
-      </div>
-
-      <Button
-        variant="secondary"
-        size="lg"
-        block
-        disabled
-        title={t("googleDisabled")}
-        data-testid="google-login"
-      >
-        <svg viewBox="0 0 24 24" className="size-5" aria-hidden="true">
-          <path
-            fill="#4285F4"
-            d="M23.5 12.3c0-.9-.1-1.6-.2-2.3H12v4.5h6.5c-.1 1.1-.8 2.7-2.3 3.8l3.5 2.7c2.1-1.9 3.8-4.8 3.8-8.7z"
-          />
-          <path
-            fill="#34A853"
-            d="M12 24c3.2 0 5.9-1.1 7.7-2.9l-3.5-2.7c-1 .7-2.4 1.2-4.2 1.2-3.2 0-5.9-2.1-6.9-5l-3.6 2.8C3.4 21.3 7.4 24 12 24z"
-          />
-          <path
-            fill="#FBBC05"
-            d="M5.1 14.6a7.4 7.4 0 0 1 0-4.7L1.5 7.1a12 12 0 0 0 0 10.8l3.6-2.8z"
-          />
-          <path
-            fill="#EA4335"
-            d="M12 4.7c2.3 0 3.8 1 4.7 1.8l3.2-3.1C17.9 1.5 15.2 0 12 0 7.4 0 3.4 2.7 1.5 6.6l3.6 2.8c1-2.9 3.7-4.7 6.9-4.7z"
-          />
-        </svg>
-        {t("google")}
-      </Button>
-
       <p className="text-center text-2xs leading-relaxed text-muted-foreground">
         {t("forgotPin")}{" "}
         <Link href="/reset-password" className="font-bold text-primary hover:underline">
           {t("forgotPasswordLink")}
         </Link>
       </p>
-
-      {process.env.NODE_ENV !== "production" ? (
-        <div
-          className="rounded-xl border border-dashed border-border bg-muted/50 p-3"
-          data-testid="demo-accounts"
-        >
-          <p className="mb-1.5 flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wide text-muted-foreground">
-            <Icon name="info" className="size-3.5" />
-            {t("demoTitle")}
-          </p>
-          <ul className="space-y-0.5 font-mono text-2xs text-muted-foreground">
-            <li>{t("demoWorker")}</li>
-            <li>{t("demoSupervisor")}</li>
-            <li>{t("demoAdmin")}</li>
-          </ul>
-        </div>
-      ) : null}
     </section>
   );
 }

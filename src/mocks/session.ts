@@ -76,6 +76,8 @@ export function isPublicPath(pathname: string): boolean {
     pathname === "/reset-password" ||
     pathname === "/docs" ||
     pathname === "/privacy" ||
+    // Halaman dukungan kreator — publik, tanpa sesi.
+    pathname === "/support" ||
     pathname.startsWith("/api/") ||
     pathname.startsWith("/_next/") ||
     pathname === "/favicon.ico" ||

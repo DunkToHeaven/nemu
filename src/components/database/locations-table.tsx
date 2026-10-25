@@ -15,8 +15,14 @@ import { ApiError, api, type LocationRow } from "@/lib/api/client";
 import { keys } from "@/lib/api/keys";
 import { formatQty } from "@/lib/format";
 
-const TYPE_TONE = { warehouse: "primary", zone: "info", rack: "neutral", bin: "neutral" } as const;
-
+/**
+ * Lokasi berdiri sendiri — tidak berjenjang.
+ *
+ * Hierarki gudang > zona > rak > bin terlalu ribet untuk pengguna umum:
+ * membuat satu gudang sederhana saja butuh memilih induk yang benar. Sekarang
+ * satu lokasi = satu nama tempat ("Rak A", "Gudang Front", "Lemari Kantor"),
+ * dan opname tinggal memilih lokasi itu.
+ */
 export function LocationsTable() {
   const t = useTranslations("database");
   const locale = useLocale();
@@ -36,54 +42,35 @@ export function LocationsTable() {
     queryFn: () => api.master.locations({ q: debounced || undefined }),
   });
 
-  // Form tambah lokasi. Sebelumnya tab Lokasi sama sekali tidak punya tombol
-  // tambah — pengguna hanya bisa menonaktifkan lokasi yang sudah ada.
   const [newOpen, setNewOpen] = React.useState(false);
-  const [form, setForm] = React.useState({
-    name: "",
-    code: "",
-    type: "rack" as LocationRow["type"],
-    parentId: "",
-  });
+  const [form, setForm] = React.useState({ name: "", code: "" });
 
   /**
-   * Dukung tautan `?new=1&type=zone` dari halaman Opname.
-   *
-   * Opname dihitung per zona. Sebelumnya pengguna yang tiba dari Opname tanpa
-   * punya zona hanya melihat dropdown kosong tanpa jalan keluar; sekarang
-   * Opname mengarah ke sini dan form langsung terbuka dengan tipe terpilih.
+   * Tautan `?new=1` (dipakai petunjuk di halaman Opname) langsung membuka form,
+   * supaya pengguna yang belum punya lokasi tidak perlu mencari tombolnya.
    */
   const params = useSearchParams();
   React.useEffect(() => {
-    if (params?.get("new") !== "1") return;
-    const wanted = params.get("type");
-    if (wanted === "warehouse" || wanted === "zone" || wanted === "rack" || wanted === "bin") {
-      setForm((prev) => ({ ...prev, type: wanted }));
-    }
-    setNewOpen(true);
+    if (params?.get("new") === "1") setNewOpen(true);
   }, [params]);
-
-  const all = useQuery({
-    queryKey: keys.locations({ q: "" }),
-    queryFn: () => api.master.locations({}),
-  });
 
   const create = useMutation({
     mutationFn: () =>
       api.admin.createLocation({
         name: form.name.trim(),
         code: form.code.trim(),
-        type: form.type,
-        parentId: form.parentId || null,
+        // Tipe disimpan 'bin' untuk kecocokan skema lama; UI tidak menampilkannya.
+        type: "bin",
+        parentId: null,
         active: true,
       }),
     onSuccess: () => {
       toast.success(t("saved"));
       void queryClient.invalidateQueries({ queryKey: ["locations"] });
-      setForm({ name: "", code: "", type: "rack", parentId: "" });
+      setForm({ name: "", code: "" });
       setNewOpen(false);
     },
-    onError: (error) => toast.error(error instanceof ApiError ? error.message : "Gagal menyimpan."),
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : t("saveFailed")),
   });
 
   const toggle = useMutation({
@@ -92,7 +79,7 @@ export function LocationsTable() {
       toast.success(result.message ?? t("saved"));
       void queryClient.invalidateQueries({ queryKey: ["locations"] });
     },
-    onError: (error) => toast.error(error instanceof ApiError ? error.message : "Gagal menyimpan."),
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : t("saveFailed")),
   });
 
   if (isLoading) return <TableSkeleton rows={10} />;
@@ -129,48 +116,22 @@ export function LocationsTable() {
 
       {newOpen && isAdmin ? (
         <section className="space-y-2 rounded-2xl border border-border bg-card p-4">
-          <p className="text-2xs text-muted-foreground">{t("newLocationHint")}</p>
+          <p className="text-2xs leading-relaxed text-muted-foreground">{t("newLocationHint")}</p>
           <div className="grid gap-2 sm:grid-cols-2">
             <Input
               value={form.name}
               data-testid="new-location-name"
               onChange={(event) => setForm({ ...form, name: event.target.value })}
-              placeholder={t("nameLabel")}
+              placeholder={t("locationNamePlaceholder")}
               className="h-11"
             />
             <Input
               value={form.code}
               data-testid="new-location-code"
               onChange={(event) => setForm({ ...form, code: event.target.value })}
-              placeholder={t("codeLabel")}
+              placeholder={t("locationCodePlaceholder")}
               className="h-11"
             />
-            <select
-              value={form.type}
-              data-testid="new-location-type"
-              onChange={(event) =>
-                setForm({ ...form, type: event.target.value as LocationRow["type"] })
-              }
-              className="h-11 rounded-xl border border-border bg-card px-3 text-[13px] font-semibold"
-            >
-              <option value="warehouse">{t("typeWarehouse")}</option>
-              <option value="zone">{t("typeZone")}</option>
-              <option value="rack">{t("typeRack")}</option>
-              <option value="bin">{t("typeBin")}</option>
-            </select>
-            <select
-              value={form.parentId}
-              data-testid="new-location-parent"
-              onChange={(event) => setForm({ ...form, parentId: event.target.value })}
-              className="h-11 rounded-xl border border-border bg-card px-3 text-[13px] font-semibold"
-            >
-              <option value="">{t("noParent")}</option>
-              {(all.data?.data ?? []).map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.path}
-                </option>
-              ))}
-            </select>
           </div>
           <Button
             className="h-11 gap-1.5"
@@ -197,22 +158,13 @@ export function LocationsTable() {
           {rows.map((row) => (
             <li key={row.id} className="flex flex-wrap items-center gap-2 px-4 py-3">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-bold">{row.path}</p>
+                <p className="truncate text-[13px] font-bold">{row.name}</p>
                 <p className="text-2xs text-muted-foreground">
-                  {row.code} ·{" "}
-                  {t("pageInfo", { shown: row.itemCount ?? 0, total: row.totalQty ?? 0 })}
+                  {row.code} · {t("locationItems", { count: row.itemCount ?? 0 })} ·{" "}
+                  {formatQty(row.totalQty ?? 0, locale)}
                 </p>
               </div>
-              <Badge tone={TYPE_TONE[row.type]}>
-                {row.type === "warehouse"
-                  ? t("typeWarehouse")
-                  : row.type === "zone"
-                    ? t("typeZone")
-                    : row.type === "rack"
-                      ? t("typeRack")
-                      : t("typeBin")}
-              </Badge>
-              {row.active ? null : <Badge tone="neutral">nonaktif</Badge>}
+              {row.active ? null : <Badge tone="neutral">{t("inactiveBadge")}</Badge>}
               {isAdmin ? (
                 <Button
                   size="sm"
@@ -229,7 +181,6 @@ export function LocationsTable() {
         </ul>
       )}
       <p className="text-2xs text-muted-foreground">{t("cannotDeleteHasStock")}</p>
-      <p className="sr-only">{formatQty(rows.length, locale)}</p>
     </div>
   );
 }

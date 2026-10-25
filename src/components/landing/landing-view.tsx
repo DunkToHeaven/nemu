@@ -38,13 +38,13 @@ export async function LandingView() {
             {t("navHow")}
           </a>
           <Link
-            href="/docs"
+            href="/support"
             className="rounded-full px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
           >
-            {t("navDocs")}
+            {t("navSupport")}
           </Link>
           <a
-            href="https://github.com"
+            href="https://github.com/Dunktoheaven"
             target="_blank"
             rel="noreferrer"
             className="rounded-full px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
@@ -103,35 +103,23 @@ export async function LandingView() {
             </p>
 
             <ol className="flex flex-wrap gap-3" id="cara-kerja">
-              {[t("step1Title"), t("step2Title"), t("step3Title")].map((title, index) => (
+              {[
+                { title: t("step1Title"), sub: t("step1Sub") },
+                { title: t("step2Title"), sub: t("step2Sub") },
+                { title: t("step3Title"), sub: t("step3Sub") },
+              ].map((step, index) => (
                 <li
-                  key={title}
+                  key={step.title}
                   className="flex min-w-[150px] flex-1 flex-col gap-2.5 rounded-2xl border border-border/80 bg-card/75 p-4 shadow-[var(--shadow-card)] backdrop-blur"
                 >
                   <span className="grid size-8 place-items-center rounded-full bg-primary-soft text-sm font-extrabold text-primary-soft-foreground">
                     {index + 1}
                   </span>
-                  <span className="text-[15px] font-bold leading-snug">{title}</span>
+                  <span className="text-[15px] font-bold leading-snug">{step.title}</span>
+                  <span className="text-[13px] leading-snug text-muted-foreground">{step.sub}</span>
                 </li>
               ))}
             </ol>
-
-            <div className="flex w-fit items-center gap-3.5 rounded-2xl border border-border/80 bg-card/80 p-3 pr-5 shadow-[var(--shadow-card)]">
-              <span className="grid size-10 place-items-center rounded-xl bg-success-soft text-success-foreground">
-                <Icon name="check" className="size-5" strokeWidth={2.6} />
-              </span>
-              <div className="min-w-[210px] space-y-1.5">
-                <p className="text-sm font-bold">
-                  {t("proofTitle", { qty: 2, unit: "pcs", name: "Bearing 6205" })}
-                </p>
-                <div className="flex items-center gap-2.5 text-[13px] text-muted-foreground">
-                  <span className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-                    <span className="block h-full w-[86%] rounded-full bg-accent-2" />
-                  </span>
-                  {t("proofRemaining", { remaining: 12, total: 14 })}
-                </div>
-              </div>
-            </div>
           </section>
         </div>
 
@@ -162,16 +150,22 @@ export async function LandingView() {
       </main>
 
       <footer className="relative z-10 px-4 pb-6 sm:px-8 lg:px-12">
-        <ul className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-center gap-x-7 gap-y-3 rounded-3xl border border-border/80 bg-card/70 px-6 py-4 text-sm font-bold backdrop-blur">
+        {/* Grid 2 kolom di HP, 4 kolom di layar besar — sejajar dengan grid
+            kartu fitur di atasnya (flex-wrap dulu membuat wrap 3+1 yang
+            kehilangan alignment kolom). */}
+        <ul className="mx-auto grid max-w-[1200px] grid-cols-2 gap-x-6 gap-y-3 rounded-3xl border border-border/80 bg-card/70 px-6 py-4 text-sm font-bold backdrop-blur lg:grid-cols-4 lg:gap-3">
           {[
             { icon: "shieldCheck" as IconName, label: t("featureLog") },
             { icon: "wifi" as IconName, label: t("featureOffline") },
             { icon: "chart" as IconName, label: t("featureLive") },
             { icon: "cloud" as IconName, label: t("featureSheets") },
           ].map((entry) => (
-            <li key={entry.label} className="flex items-center gap-2.5">
-              <Icon name={entry.icon} className="size-5 text-primary" />
-              {entry.label}
+            /* Icon dikunci di tepi kiri kolom (items-start, bukan
+               justify-center): saat label wrap ke 2 baris, ikon tetap sejajar
+               ikon kartu fitur di atasnya, tidak melayang ke tengah. */
+            <li key={entry.label} className="flex min-w-0 items-start gap-2.5">
+              <Icon name={entry.icon} className="size-5 shrink-0 text-primary" />
+              <span className="text-balance leading-snug">{entry.label}</span>
             </li>
           ))}
         </ul>
@@ -180,11 +174,8 @@ export async function LandingView() {
             "mx-auto mt-4 flex max-w-[1200px] flex-wrap items-center justify-center gap-4 text-2xs text-muted-foreground",
           )}
         >
-          <Link href="/docs" className="hover:text-foreground">
-            {t("footerDocs")}
-          </Link>
-          <Link href="/privacy" className="hover:text-foreground">
-            {t("footerPrivacy")}
+          <Link href="/support" className="hover:text-foreground">
+            {t("footerSupport")}
           </Link>
           <span>MIT · v0.1.0</span>
         </div>

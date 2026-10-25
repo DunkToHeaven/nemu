@@ -68,6 +68,8 @@ export const itemSchema = z.object({
   /** Batas atas stok wajar; null bila tidak dibatasi. */
   maxStock: z.number().nullable(),
   unitValue: z.number().nullable(),
+  /** Catatan tambahan (kondisi, garansi, supplier). Opsional di respons. */
+  description: z.string().nullable().optional(),
   isBulk: z.boolean(),
   primaryLocationId: z.string().nullable(),
   active: z.boolean(),
@@ -123,6 +125,8 @@ export const transactionSchema = z.object({
   custodyId: z.string().nullable(),
   equipmentId: z.string().nullable(),
   outcome: z.enum(["used", "damaged_lost"]).nullable(),
+  /** Harga per unit saat receive dicatat; null untuk jenis transaksi lain. */
+  unitPrice: z.number().nullable().optional(),
   clientCreatedAt: z.string().nullable(),
   createdAt: z.string(),
   reversesId: z.string().nullable(),
@@ -226,6 +230,8 @@ export const createTransactionSchema = z.object({
   reasonId: z.string().nullable().optional(),
   refNo: z.string().max(64).nullable().optional(),
   note: z.string().max(500).nullable().optional(),
+  /** Harga per unit — hanya dikirim saat receive; jenis lain mengabaikannya. */
+  unitPrice: z.number().min(0).max(1_000_000_000).nullable().optional(),
   idempotencyKey: z.string().min(8).max(80),
   scanMethod: scanMethodSchema,
   toLocationId: z.string().nullable().optional(),
@@ -287,6 +293,8 @@ export const itemWriteSchema = z.object({
   // wajib sehingga setiap pembuatan item gagal 400 "Data tidak valid" — tombol
   // Simpan tampak tidak bereaksi.
   unitValue: z.number().min(0).max(1_000_000_000).nullable().optional(),
+  /** Catatan tambahan (kondisi, garansi, supplier). Opsional. */
+  description: z.string().max(2000).nullable().optional(),
   isBulk: z.boolean().optional(),
   active: z.boolean().optional(),
   primaryLocationId: z.string().nullable().optional(),

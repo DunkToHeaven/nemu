@@ -15,7 +15,7 @@ import { useSession } from "@/components/session-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -316,6 +316,8 @@ function ItemSheet({
   const [minStock, setMinStock] = React.useState("");
   const [maxStock, setMaxStock] = React.useState("");
   const [name, setName] = React.useState("");
+  const [unitPrice, setUnitPrice] = React.useState("");
+  const [description, setDescription] = React.useState("");
 
   React.useEffect(() => {
     if (!item) return;
@@ -323,6 +325,10 @@ function ItemSheet({
     // max_stock nullable: kosong berarti tidak ada plafon, bukan nol.
     setMaxStock(item.maxStock === null || item.maxStock === undefined ? "" : String(item.maxStock));
     setName(item.name);
+    setUnitPrice(
+      item.unitValue === null || item.unitValue === undefined ? "" : String(item.unitValue),
+    );
+    setDescription(item.description ?? "");
   }, [item]);
 
   const history = useQuery({
@@ -339,6 +345,9 @@ function ItemSheet({
         // String kosong -> null (tanpa plafon). Number("") === 0 akan salah
         // menandai item sebagai kelebihan stok di laporan.
         maxStock: maxStock.trim() === "" ? null : Number(maxStock),
+        // Kosong = tanpa harga acuan.
+        unitValue: unitPrice.trim() === "" ? null : Number(unitPrice),
+        description: description.trim() || null,
       }),
     onSuccess: () => {
       toast.success(t("saved"));
@@ -415,6 +424,38 @@ function ItemSheet({
                   placeholder="—"
                   value={maxStock}
                   onChange={(event) => setMaxStock(event.target.value)}
+                  disabled={!canEdit}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="item-price" className="text-[13px] font-bold">
+                  {t("priceLabel")}
+                </label>
+                <Input
+                  id="item-price"
+                  data-testid="edit-item-price"
+                  type="number"
+                  min={0}
+                  step="any"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={unitPrice}
+                  onChange={(event) => setUnitPrice(event.target.value)}
+                  disabled={!canEdit}
+                  className="tnum"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="item-description" className="text-[13px] font-bold">
+                  {t("descriptionLabel")}
+                </label>
+                <Textarea
+                  id="item-description"
+                  data-testid="edit-item-description"
+                  rows={2}
+                  maxLength={2000}
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
                   disabled={!canEdit}
                 />
               </div>

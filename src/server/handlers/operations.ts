@@ -396,6 +396,7 @@ export async function listCounts(tenant: string): Promise<Response> {
     {
       id: string;
       warehouse_id: string;
+      name: string | null;
       status: string;
       created_at: Date;
       approved_at: Date | null;
@@ -403,7 +404,7 @@ export async function listCounts(tenant: string): Promise<Response> {
       created_by_name: string | null;
     }[]
   >`
-    SELECT c.id, c.warehouse_id, c.status::text AS status, c.created_at, c.approved_at,
+    SELECT c.id, c.warehouse_id, c.name, c.status::text AS status, c.created_at, c.approved_at,
            c.created_by, u.name AS created_by_name
     FROM stock_counts c LEFT JOIN users u ON u.id = c.created_by
     ORDER BY c.created_at DESC LIMIT 50
@@ -452,10 +453,10 @@ export async function listCounts(tenant: string): Promise<Response> {
       const countLines = byCount.get(r.id) ?? [];
       return {
         id: r.id,
-        name: `Opname ${r.created_at.toISOString().slice(0, 10)}`,
+        name: r.name ?? `Opname ${r.created_at.toISOString().slice(0, 10)}`,
         warehouseId: r.warehouse_id,
         zoneId: countLines[0]?.location_id ?? null,
-        blind: true,
+        blind: false,
         status: r.status === "approved" ? "closed" : r.status === "open" ? "open" : "review",
         createdBy: r.created_by,
         createdByName: r.created_by_name ?? "—",
@@ -491,33 +492,49 @@ export async function createCount(
   const body = await parseBody(
     request,
     z.object({
-      zoneId: z.string(),
+      // Lokasi yang akan dihitung. `zoneId` nama lama, dipertahankan supaya
+      // klien lama tetap jalan; salah satu wajib ada.
+      locationId: z.string().optional(),
+      zoneId: z.string().optional(),
       name: z.string().max(120).optional(),
       blind: z.boolean().optional(),
       source: z.string().optional(),
     }),
   );
+  const locationId = body.locationId ?? body.zoneId;
+  if (!locationId) throw errors.badRequest("Pilih lokasi untuk opname.");
 
-  const loc = await db<{ warehouse_id: string }[]>`
-    SELECT warehouse_id FROM locations WHERE id = ${body.zoneId}
+  const loc = await db<{ warehouse_id: string; name: string }[]>`
+    SELECT warehouse_id, name FROM locations WHERE id = ${locationId}
   `;
   const w = loc[0];
-  if (!w) throw errors.badRequest("Zona tidak ditemukan.");
+  if (!w) throw errors.badRequest("Lokasi tidak ditemukan.");
 
   const id = `cnt_${crypto.randomUUID().slice(0, 8)}`;
-  await db`INSERT INTO stock_counts (id, warehouse_id, created_by)
-    VALUES (${id}, ${w.warehouse_id}, ${user.id})`;
+  await db`INSERT INTO stock_counts (id, warehouse_id, name, created_by)
+    VALUES (${id}, ${w.warehouse_id}, ${body.name ?? null}, ${user.id})`;
 
   // Baris opname dibuat dari saldo saat ini, disnapshot ke expected_qty.
+  // Lokasi sudah datar (tanpa hierarki): cukup lokasi yang dipilih.
   await db`
     INSERT INTO stock_count_lines (id, count_id, item_id, location_id, expected_qty)
     SELECT 'scl_' || gen_random_uuid()::text, ${id}, sl.item_id, sl.location_id, sl.qty
     FROM stock_levels sl
-    JOIN locations l ON l.id = sl.location_id
-    WHERE l.id = ${body.zoneId} OR l.parent_id = ${body.zoneId}
+    WHERE sl.location_id = ${locationId}
   `;
 
-  return ok({ count: { id, warehouseId: w.warehouse_id, status: "open" } }, { status: 201 });
+  return ok(
+    {
+      count: {
+        id,
+        name: body.name ?? `Opname ${w.name}`,
+        warehouseId: w.warehouse_id,
+        locationId,
+        status: "open",
+      },
+    },
+    { status: 201 },
+  );
 }
 
 export async function setCountLine(

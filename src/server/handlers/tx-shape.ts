@@ -25,6 +25,7 @@ interface TxRow {
   custody_id: string | null;
   equipment_id: string | null;
   outcome: string | null;
+  unit_price: string | null;
   client_created_at: Date | null;
   created_at: Date;
   reverses_id: string | null;
@@ -38,7 +39,7 @@ export async function loadTransaction(db: Sql, id: string) {
     SELECT t.id, t.type::text AS type, t.item_id, t.from_location_id, t.to_location_id, t.qty,
            t.user_id, t.reason_id, t.ref_no, t.note, t.idempotency_key, t.device_id,
            t.scan_method::text AS scan_method, t.custody_id, t.equipment_id,
-           t.outcome::text AS outcome, t.client_created_at, t.created_at, t.reverses_id,
+           t.outcome::text AS outcome, t.unit_price, t.client_created_at, t.created_at, t.reverses_id,
            t.review_status::text AS review_status,
            u.name AS user_name, i.name AS item_name
     FROM transactions t
@@ -65,6 +66,8 @@ export async function loadTransaction(db: Sql, id: string) {
     custodyId: r.custody_id,
     equipmentId: r.equipment_id,
     outcome: r.outcome,
+    // numeric Postgres datang sebagai string; kontrak klien butuh number.
+    unitPrice: r.unit_price === null ? null : Number(r.unit_price),
     clientCreatedAt: r.client_created_at ? r.client_created_at.toISOString() : null,
     createdAt: r.created_at.toISOString(),
     reversesId: r.reverses_id,

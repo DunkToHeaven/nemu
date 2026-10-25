@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { ListSkeleton } from "@/components/app/states";
 import { CustodyView } from "@/components/custody/custody-view";
 
-export const metadata = { title: "Barang dibawa" };
+export const metadata = { title: "Kustodi" };
 
 export default function DibawaPage() {
   return (

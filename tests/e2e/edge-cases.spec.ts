@@ -119,17 +119,24 @@ test.describe("kasus tepi", () => {
 
     await page.reload();
 
-    // Dialog "sesi berakhir" muncul; tombolnya membawa `next` internal.
+    // Dialog "sesi berakhir" muncul; tombolnya membawa ke BERANDA (tanpa
+    // `next`) supaya tidak bisa terjadi loop sesi habis -> login -> next.
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible({ timeout: 25_000 });
     await expect(dialog).toContainText(/sesi|session/i);
     await dialog.getByRole("button").first().click();
-    await page.waitForURL(/\/login/, { timeout: 25_000 });
-    expect(page.url()).toContain("next=");
+    await page.waitForURL((url) => url.pathname === "/", { timeout: 25_000 });
+    expect(page.url()).not.toContain("next=");
 
+    // Dari beranda masuk lagi, lalu buka halaman item — draf harus pulih.
+    await page.getByTestId("tab-employee").click();
     await page.getByTestId("input-code").fill("WRK01");
     await page.getByTestId("input-pin").fill("1122");
     await page.getByTestId("submit-login").click();
+    // Tunggu login selesai (mendarat di /app) SEBELUM pindah halaman; kalau
+    // tidak, page.goto membatalkan navigasi login yang sedang berjalan.
+    await page.waitForURL(/\/app/, { timeout: 25_000 });
+    await page.goto(url);
     await page.waitForURL(/\/i\//, { timeout: 25_000 });
 
     // Draf dipulihkan: nilai 3 masih ada.

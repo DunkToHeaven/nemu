@@ -9,6 +9,9 @@ export const keys = {
   tx: (filters: Record<string, unknown>) => ["transactions", filters] as const,
   verifyQueue: ["verifications", "pending"] as const,
   reports: (days: number) => ["reports", days] as const,
+  reportDrill: (filter: { kind: string; id: string; days: number } | null) =>
+    ["reports", "drill", filter ?? "none"] as const,
+  priceHistory: (days: number) => ["reports", "price-history", days] as const,
   counts: ["stock-counts"] as const,
   items: (filters: Record<string, unknown>) => ["items", filters] as const,
   locations: (filters: Record<string, unknown>) => ["locations", filters] as const,

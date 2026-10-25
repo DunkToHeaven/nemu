@@ -215,6 +215,8 @@ export function createTransaction(req: ApiRequest): ApiResponse {
       note: input.note ?? null,
       idempotencyKey: input.idempotencyKey,
       scanMethod: input.scanMethod,
+      // Harga hanya bermakna saat receive (sama seperti sisi server).
+      unitPrice: input.type === "receive" ? (input.unitPrice ?? null) : null,
     });
 
     emit("tx.created", {
@@ -300,6 +302,8 @@ function pushTransaction(input: {
   note: string | null;
   idempotencyKey: string;
   scanMethod: Transaction["scanMethod"];
+  /** Harga per unit — hanya diisi cabang receive. */
+  unitPrice?: number | null;
   equipmentId?: string | null;
   custodyId?: string | null;
   outcome?: Transaction["outcome"];
@@ -323,6 +327,7 @@ function pushTransaction(input: {
     custodyId: input.custodyId ?? null,
     equipmentId: input.equipmentId ?? null,
     outcome: input.outcome ?? null,
+    unitPrice: input.unitPrice ?? null,
     clientCreatedAt: null,
     createdAt: new Date().toISOString(),
     reversesId: input.reversesId ?? null,

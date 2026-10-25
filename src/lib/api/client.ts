@@ -335,6 +335,10 @@ export const api = {
 
   dashboard: () => request<DashboardResponse>("dashboard"),
   reports: (days: number) => request<ReportsResponse>("reports", { query: { days } }),
+  reportDrill: (query: Record<string, string | number>) =>
+    request<ReportDrillResponse>("reports/drill", { query }),
+  priceHistory: (query: Record<string, string | number> = {}) =>
+    request<PriceHistoryResponse>("reports/price-history", { query }),
   events: () => request<{ data: LiveEvent[] }>("events"),
 
   master: {
@@ -410,7 +414,7 @@ export const api = {
 
   counts: {
     list: () => request<{ data: StockCountRow[] }>("stock-counts"),
-    create: (body: { zoneId: string; name?: string; blind?: boolean; source?: string }) =>
+    create: (body: { locationId: string; name?: string }) =>
       request<{ count: StockCountRow }>("stock-counts", { method: "POST", body }),
     setLine: (countId: string, lineId: string, countedQty: number) =>
       request<{ line: StockCountLineRow }>(`stock-counts/${countId}/lines/${lineId}`, {
@@ -498,15 +502,6 @@ export interface DashboardResponse {
   topItems: { id: string; label: string; qty: number; tx: number }[];
   custody: CustodyEntry[];
   teamCustodyCount: number;
-  system: {
-    version: string;
-    activeUsers: number;
-    lastBackupAt: string | null;
-    sheetsSync: string;
-    pendingOutbox: number;
-    uptimeHours: number;
-    setupChecklist: { id: string; label: string; done: boolean }[];
-  } | null;
 }
 
 export interface InventoryHealth {
@@ -567,13 +562,72 @@ export interface ReportsResponse {
   };
 }
 
+/** Isi Sheet drill-down laporan — item ATAU transaksi, tergantung `kind`. */
+export interface ReportDrillResponse {
+  kind: string;
+  items: {
+    itemId: string;
+    name: string;
+    code: string;
+    qty: number;
+    minStock: number;
+    maxStock: number | null;
+    locationPath: string;
+    unit: string;
+    lastCountedAt: string | null;
+    lastMovedAt: string | null;
+  }[];
+  tx: {
+    txId: string;
+    itemId: string;
+    itemName: string;
+    itemCode: string;
+    userName: string;
+    type: string;
+    qty: number;
+    createdAt: string;
+    note: string | null;
+    refNo: string | null;
+  }[];
+}
+
+/** Tren harga perolehan per item — satu titik data per tanggal receive. */
+export interface PriceHistoryPoint {
+  date: string;
+  price: number;
+  prevPrice: number | null;
+  delta: number | null;
+  deltaPct: number | null;
+  qty: number;
+  tx: number;
+}
+
+export interface PriceHistoryEntry {
+  itemId: string;
+  name: string;
+  code: string;
+  unit: string;
+  firstPrice: number;
+  lastPrice: number;
+  minPrice: number;
+  maxPrice: number;
+  changePct: number;
+  points: PriceHistoryPoint[];
+}
+
+export interface PriceHistoryResponse {
+  rangeDays: number;
+  items: PriceHistoryEntry[];
+  totalItems: number;
+}
+
 export interface MasterMeta {
   warehouses: { id: string; code: string; name: string }[];
   categories: CategoryRow[];
   units: UnitRow[];
   reasons: ReasonRow[];
   equipment: EquipmentRow[];
-  locations: { id: string; name: string; path: string; type: string }[];
+  locations: { id: string; name: string; code: string; path: string; type: string }[];
 }
 
 export interface LocationRow {

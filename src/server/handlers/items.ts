@@ -22,6 +22,7 @@ interface ItemRow {
   min_stock: number;
   max_stock: number | null;
   unit_value: string | null;
+  description: string | null;
   is_bulk: boolean;
   primary_location_id: string | null;
   active: boolean;
@@ -41,6 +42,7 @@ function toItem(row: ItemRow) {
     minStock: row.min_stock,
     maxStock: row.max_stock ?? null,
     unitValue: row.unit_value === null ? null : Number(row.unit_value),
+    description: row.description ?? null,
     isBulk: row.is_bulk,
     primaryLocationId: row.primary_location_id,
     active: row.active,
@@ -229,6 +231,35 @@ export async function itemByCode(_request: Request, code: string): Promise<Respo
 
   const row = rows[0];
   if (!row) throw errors.notFound("Item");
+  return buildItemDetail(db, row);
+}
+
+/** Detail item berdasarkan id — dipakai halaman lokasi item dan drill-down laporan. */
+export async function itemById(_request: Request, id: string): Promise<Response> {
+  const session = await requireSession();
+  const db = tenantPool(session.tenant);
+
+  const rows = await db<(ItemRow & { last_verified: Date | null; verify_count: number })[]>`
+    SELECT i.*, v.last_verified, COALESCE(v.verify_count, 0)::int AS verify_count
+    FROM items i
+    LEFT JOIN LATERAL (
+      SELECT max(answered_at) AS last_verified, count(*) AS verify_count
+      FROM verifications
+      WHERE item_id = i.id AND status IN ('recorded','approved')
+    ) v ON true
+    WHERE i.id = ${id}
+  `;
+
+  const row = rows[0];
+  if (!row) throw errors.notFound("Item");
+  return buildItemDetail(db, row);
+}
+
+/** Susun respons detail item — dipakai bersama oleh itemByCode dan itemById. */
+async function buildItemDetail(
+  db: Sql,
+  row: ItemRow & { last_verified: Date | null; verify_count: number },
+): Promise<Response> {
   if (!row.active) throw errors.conflict("ITEM_INACTIVE", "Item ini sudah dinonaktifkan.");
 
   // Satu query untuk semua level + lokasi lengkap. Klien membutuhkan objek
@@ -399,9 +430,10 @@ export async function createItem(request: Request): Promise<Response> {
   try {
     await db`
       INSERT INTO items (id, sku, code, name, category_id, unit_id, min_stock, max_stock,
-        unit_value, is_bulk, primary_location_id)
+        unit_value, description, is_bulk, primary_location_id)
       VALUES (${id}, ${body.sku}, ${code}, ${body.name}, ${body.categoryId}, ${body.unitId},
               ${body.minStock ?? 0}, ${body.maxStock ?? null}, ${body.unitValue ?? null},
+              ${body.description?.trim() ? body.description.trim() : null},
               ${body.isBulk ?? false}, ${body.primaryLocationId ?? null})
     `;
   } catch (error) {
@@ -432,6 +464,12 @@ export async function updateItem(request: Request, id: string): Promise<Response
       unit_id = ${body.unitId ?? before[0].unit_id},
       min_stock = ${body.minStock ?? before[0].min_stock},
       max_stock = ${body.maxStock === undefined ? before[0].max_stock : body.maxStock},
+      unit_value = ${body.unitValue === undefined ? before[0].unit_value : body.unitValue},
+      description = ${
+        body.description === undefined
+          ? before[0].description
+          : body.description?.trim() || null
+      },
       is_bulk = ${body.isBulk ?? before[0].is_bulk},
       active = ${body.active ?? before[0].active},
       updated_at = now()

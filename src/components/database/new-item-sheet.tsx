@@ -6,7 +6,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { Icon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -42,6 +42,8 @@ export function NewItemSheet({
   const [unitId, setUnitId] = React.useState("");
   const [minStock, setMinStock] = React.useState("0");
   const [maxStock, setMaxStock] = React.useState("");
+  const [unitPrice, setUnitPrice] = React.useState("");
+  const [description, setDescription] = React.useState("");
   const [locationId, setLocationId] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
 
@@ -58,6 +60,9 @@ export function NewItemSheet({
     setSku("");
     setName("");
     setMinStock("0");
+    setMaxStock("");
+    setUnitPrice("");
+    setDescription("");
     setLocationId("");
     setError(null);
     setCategoryId("");
@@ -82,6 +87,9 @@ export function NewItemSheet({
         // Kosong = tanpa plafon. Number("") === 0 akan salah menandai
         // item sebagai kelebihan stok di laporan.
         maxStock: maxStock.trim() === "" ? null : Number(maxStock),
+        // Kosong = tanpa harga acuan.
+        unitValue: unitPrice.trim() === "" ? null : Number(unitPrice),
+        description: description.trim() || null,
         primaryLocationId: locationId || null,
       }),
     onSuccess: () => {
@@ -216,6 +224,24 @@ export function NewItemSheet({
             </div>
 
             <div className="space-y-1.5">
+              <label htmlFor="new-price" className="text-[13px] font-bold">
+                {t("priceLabel")}
+              </label>
+              <Input
+                id="new-price"
+                data-testid="new-item-price"
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                placeholder="0"
+                value={unitPrice}
+                onChange={(event) => setUnitPrice(event.target.value)}
+                className="tnum"
+              />
+            </div>
+
+            <div className="space-y-1.5">
               <label htmlFor="new-location" className="text-[13px] font-bold">
                 {t("locationLabel")}
               </label>
@@ -239,6 +265,21 @@ export function NewItemSheet({
           <p className="rounded-xl bg-muted px-3 py-2 text-2xs text-muted-foreground">
             {t("qtyReadOnly")}
           </p>
+
+          <div className="space-y-1.5">
+            <label htmlFor="new-description" className="text-[13px] font-bold">
+              {t("descriptionLabel")}
+            </label>
+            <Textarea
+              id="new-description"
+              data-testid="new-item-description"
+              rows={2}
+              maxLength={2000}
+              placeholder={t("descriptionPlaceholder")}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
+          </div>
 
           {error ? (
             <p role="alert" className="text-2xs font-bold text-danger-foreground">

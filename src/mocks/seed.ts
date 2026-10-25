@@ -886,6 +886,14 @@ export function buildSeed(seed = 20261021): MockDatabase {
       toLocationId:
         type === "return" || type === "receive" || type === "transfer" ? level.locationId : null,
       qty,
+      // Receive seed diberi harga (±15% dari nilai acuan item) supaya laporan
+      // tren harga punya data historis di mode mock, sama seperti DB asli.
+      unitPrice:
+        type === "receive"
+          ? item.unitValue
+            ? Math.round((item.unitValue * (100 + rng.int(-15, 15))) / 100)
+            : rng.pick([12_000, 25_000, 45_000, 90_000, 150_000])
+          : null,
       userId: user.id,
       reasonId: type === "issue" ? reason.id : null,
       refNo: type === "issue" && reason.requiresWo ? `WO-${rng.int(2100, 2600)}` : null,

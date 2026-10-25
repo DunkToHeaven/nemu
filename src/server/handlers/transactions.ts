@@ -37,6 +37,8 @@ export const transactionSchema = z.discriminatedUnion("type", [
     reasonId: z.string().nullable().optional(),
     refNo: z.string().max(120).nullable().optional(),
     note: z.string().max(500).nullable().optional(),
+    /** Harga per unit — hanya bermakna untuk receive; diabaikan untuk jenis lain. */
+    unitPrice: z.number().min(0).max(1_000_000_000).nullable().optional(),
   }),
 ]);
 
@@ -50,7 +52,39 @@ export async function createTransaction(request: Request): Promise<Response> {
   });
   if (!limit.allowed) throw errors.rateLimited(limit.retryAfterSeconds);
 
-  const body = await parseBody(request, transactionSchema);
+  // Alur scan mengirim `itemCode` (hasil QR) dan `locationId` tunggal; kontrak
+  // server memakai `itemId` (+ to/fromLocationId). Kode QR tidak pernah berubah,
+  // jadi join lewat `code` adalah jembatan yang sah. Tanpa ini, POST dari layar
+  // scan selalu 400 "Data tidak valid" di mode database.
+  let raw: unknown;
+  try {
+    raw = await request.json();
+  } catch {
+    throw errors.badRequest("Body harus JSON yang valid.");
+  }
+  if (raw && typeof raw === "object") {
+    const b = raw as Record<string, unknown>;
+    if (!b.itemId && typeof b.itemCode === "string" && b.itemCode) {
+      const [item] = await db<{ id: string }[]>`
+        SELECT id FROM items WHERE code = ${b.itemCode}
+      `;
+      if (!item) throw errors.notFound("Item dengan kode itu");
+      b.itemId = item.id;
+      if (b.type !== "issue" && typeof b.locationId === "string" && !b.toLocationId) {
+        b.toLocationId = b.locationId;
+      }
+    }
+  }
+  let body: z.infer<typeof transactionSchema>;
+  try {
+    body = transactionSchema.parse(raw);
+  } catch (error) {
+    const issues =
+      typeof error === "object" && error !== null && "issues" in error
+        ? (error as { issues: unknown }).issues
+        : undefined;
+    throw errors.badRequest("Data tidak valid.", issues);
+  }
 
   if (body.type === "issue") {
     const result = await issueStock(session.user, session.tenant, {
@@ -127,6 +161,8 @@ export async function createTransaction(request: Request): Promise<Response> {
     reasonId: body.reasonId,
     refNo: body.refNo,
     note: body.note,
+    // Harga hanya bermakna saat receive (barang masuk + uangnya keluar).
+    unitPrice: body.type === "receive" ? (body.unitPrice ?? null) : null,
   });
 
   if (!result.ok) {
@@ -213,13 +249,14 @@ export async function listTransactions(request: Request): Promise<Response> {
       created_at: Date;
       reverses_id: string | null;
       review_status: string;
+      unit_price: string | null;
       from_path: string | null;
       to_path: string | null;
     }[]
   >`
     SELECT t.id, t.type, t.item_id, i.name AS item_name, i.code AS item_code,
            t.from_location_id, t.to_location_id, t.qty, t.user_id, u.name AS user_name,
-           t.reason_id, t.created_at, t.reverses_id, t.review_status,
+           t.reason_id, t.created_at, t.reverses_id, t.review_status, t.unit_price,
            lf.path AS from_path, lt.path AS to_path
     FROM transactions t
     JOIN items i ON i.id = t.item_id
@@ -247,6 +284,8 @@ export async function listTransactions(request: Request): Promise<Response> {
     qty: row.qty,
     userId: row.user_id,
     userName: row.user_name,
+    // numeric Postgres datang sebagai string; kontrak klien butuh number.
+    unitPrice: row.unit_price === null ? null : Number(row.unit_price),
     reasonId: row.reason_id,
     createdAt: row.created_at.toISOString(),
     reversesId: row.reverses_id,
@@ -286,9 +325,20 @@ export async function itemTransactions(_request: Request, itemId: string): Promi
   const session = await requireSession();
   const db = tenantPool(session.tenant);
   const rows = await db<
-    { id: string; type: string; qty: number; created_at: Date; user_name: string }[]
+    {
+      id: string;
+      type: string;
+      qty: number;
+      created_at: Date;
+      user_name: string;
+      note: string | null;
+      ref_no: string | null;
+      from_location_id: string | null;
+      to_location_id: string | null;
+    }[]
   >`
-    SELECT t.id, t.type, t.qty, t.created_at, u.name AS user_name
+    SELECT t.id, t.type, t.qty, t.created_at, u.name AS user_name,
+           t.note, t.ref_no, t.from_location_id, t.to_location_id, t.unit_price
     FROM transactions t JOIN users u ON u.id = t.user_id
     WHERE t.item_id = ${itemId}
     ORDER BY t.created_at DESC LIMIT 100
@@ -300,6 +350,10 @@ export async function itemTransactions(_request: Request, itemId: string): Promi
       qty: row.qty,
       createdAt: row.created_at.toISOString(),
       userName: row.user_name,
+      note: row.note,
+      refNo: row.ref_no,
+      fromLocationId: row.from_location_id,
+      toLocationId: row.to_location_id,
     })),
   });
 }

@@ -77,14 +77,14 @@ export function Sidebar({ role }: { role: Role }) {
         <button
           type="button"
           onClick={() => setCollapsed((value) => !value)}
-          aria-label={`${t("nav.more")} — ${collapsed ? t("common.expandSidebar") : t("common.collapseSidebar")}`}
+          aria-label={collapsed ? t("common.expandSidebar") : t("common.collapseSidebar")}
           className={cn(
             "flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
             collapsed && "justify-center px-0",
           )}
         >
           <Icon name={collapsed ? "chevronRight" : "chevronDown"} className="size-[18px]" />
-          {collapsed ? null : <span>{t("nav.more")}</span>}
+          {collapsed ? null : <span>{t("nav.shrink")}</span>}
         </button>
       </div>
     </aside>

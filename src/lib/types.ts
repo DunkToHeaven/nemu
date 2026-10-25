@@ -82,6 +82,8 @@ export interface Item {
   /** Batas atas stok wajar; null berarti tidak dibatasi. */
   maxStock: number | null;
   unitValue: number | null;
+  /** Catatan tambahan (kondisi, garansi, supplier). Opsional. */
+  description?: string | null;
   isBulk: boolean;
   primaryLocationId: string | null;
   active: boolean;
@@ -143,6 +145,8 @@ export interface Transaction {
   custodyId: string | null;
   equipmentId: string | null;
   outcome: "used" | "damaged_lost" | null;
+  /** Harga per unit saat receive dicatat; null untuk jenis transaksi lain. */
+  unitPrice?: number | null;
   clientCreatedAt: string | null;
   createdAt: string;
   reversesId: string | null;

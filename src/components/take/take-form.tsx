@@ -52,6 +52,7 @@ export function TakeForm({
   const [reasonId, setReasonId] = React.useState("");
   const [refNo, setRefNo] = React.useState("");
   const [note, setNote] = React.useState("");
+  const [unitPrice, setUnitPrice] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [draftRestored, setDraftRestored] = React.useState(false);
   const idempotencyRef = React.useRef<string>(uuidv7());
@@ -66,6 +67,7 @@ export function TakeForm({
     setReasonId(draft.reasonId);
     setRefNo(draft.refNo);
     setNote(draft.note);
+    setUnitPrice(draft.unitPrice ?? "");
     if (draft.locationId && detail.stock.some((row) => row.locationId === draft.locationId)) {
       onLocationChange(draft.locationId);
     }
@@ -81,9 +83,10 @@ export function TakeForm({
       reasonId,
       refNo,
       note,
+      unitPrice,
       savedAt: Date.now(),
     });
-  }, [key, detail.item.code, locationId, qty, reasonId, refNo, note]);
+  }, [key, detail.item.code, locationId, qty, reasonId, refNo, note, unitPrice]);
 
   const { data: reasons } = useQuery({
     queryKey: keys.reasons(false),
@@ -109,6 +112,8 @@ export function TakeForm({
         reasonId: reasonId || null,
         refNo: refNo.trim() || null,
         note: note.trim() || null,
+        // Harga hanya untuk receive; jenis lain tidak pernah mengirimnya.
+        unitPrice: mode === "receive" && unitPrice.trim() !== "" ? Number(unitPrice) : null,
         idempotencyKey: idempotencyRef.current,
         scanMethod: "in_app_scanner",
       }),
@@ -140,6 +145,7 @@ export function TakeForm({
           reasonId: reasonId || null,
           refNo: refNo.trim() || null,
           note: note.trim() || null,
+          unitPrice: mode === "receive" && unitPrice.trim() !== "" ? Number(unitPrice) : null,
           idempotencyKey: idempotencyRef.current,
           scanMethod: "in_app_scanner" as const,
         };
@@ -180,6 +186,9 @@ export function TakeForm({
 
   const validate = (): string | null => {
     if (numericQty <= 0) return t("qtyInvalid");
+    if (mode === "receive" && unitPrice.trim() !== "" && !(Number(unitPrice) >= 0)) {
+      return t("priceInvalid");
+    }
     if (decimals === 0 && !Number.isInteger(numericQty)) return t("qtyDecimal");
     if (mode === "issue" && numericQty > available) {
       return t("qtyTooBig", { available: formatQty(available, locale), unit });
@@ -216,6 +225,7 @@ export function TakeForm({
               setReasonId("");
               setRefNo("");
               setNote("");
+              setUnitPrice("");
               setDraftRestored(false);
             }}
             className="underline underline-offset-2"
@@ -267,6 +277,29 @@ export function TakeForm({
           </button>
         ) : null}
       </div>
+
+      {/* Harga hanya diminta saat menambah stok (receive). Saat mengambil
+          barang tidak ada harga — pengeluaran tidak mengubah harga perolehan. */}
+      {mode === "receive" ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="take-unit-price">
+            {t("unitPriceLabel")}{" "}
+            <span className="font-normal text-muted-foreground">({t("optional")})</span>
+          </Label>
+          <Input
+            id="take-unit-price"
+            data-testid="unit-price-input"
+            type="number"
+            min={0}
+            step="any"
+            inputMode="decimal"
+            placeholder="0"
+            value={unitPrice}
+            onChange={(event) => setUnitPrice(event.target.value)}
+            className="tnum"
+          />
+        </div>
+      ) : null}
 
       {mode === "issue" ? (
         <div className="space-y-1.5">

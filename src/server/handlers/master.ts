@@ -34,8 +34,8 @@ export async function getMeta(tenant: string): Promise<Response> {
     SELECT id, code, name, active FROM equipment WHERE active ORDER BY name
   `;
   const locations = await db<
-    { id: string; name: string; path: string; type: string }[]
-  >`SELECT id, name, path, type FROM locations WHERE active ORDER BY path`;
+    { id: string; name: string; code: string; path: string; type: string }[]
+  >`SELECT id, name, code, path, type FROM locations WHERE active ORDER BY path`;
 
   return ok({
     warehouses,
@@ -134,13 +134,13 @@ export async function createLocation(request: Request, tenant: string): Promise<
     const p = parent[0];
     if (!p) throw errors.badRequest("Lokasi induk tidak ditemukan.");
     warehouseId = p.warehouse_id;
-    path = `${p.path} › ${body.name}`;
+    path = body.code;
   } else {
     const wh = await db<{ id: string }[]>`SELECT id FROM warehouses ORDER BY name LIMIT 1`;
     const first = wh[0];
     if (!first) throw errors.badRequest("Belum ada gudang.");
     warehouseId = first.id;
-    path = body.name;
+    path = body.code;
   }
 
   const id = `loc_${crypto.randomUUID().slice(0, 8)}`;
