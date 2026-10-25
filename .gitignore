@@ -17,3 +17,10 @@ e2e-*.log
 tunnel.log
 
 .vercel
+
+# artefak tangkapan layar lokal
+shots/
+*.png
+!src/app/icon.png
+!src/app/apple-icon.png
+!src/app/opengraph-image.png
