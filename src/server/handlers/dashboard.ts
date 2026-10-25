@@ -9,7 +9,7 @@
 
 import type { AuthUser } from "@/server/auth";
 import { tenantPool } from "@/server/db";
-import { ok } from "@/server/http";
+import { ok, requireRole } from "@/server/http";
 
 const DAY = 86_400_000;
 
@@ -202,8 +202,6 @@ export async function getDashboard(user: AuthUser, tenant: string): Promise<Resp
     SELECT count(*)::int AS count FROM custody WHERE status = 'open'
   `;
 
-  const isAdmin = user.role === "admin";
-
   return ok({
     kpis: {
       totalItems: t?.total_items ?? 0,
@@ -346,6 +344,9 @@ export async function getStock(request: Request, tenant: string): Promise<Respon
 }
 
 export async function getReports(request: Request, tenant: string): Promise<Response> {
+  // Laporan berisi angka lintas pengguna (per pelaku, per alasan, nilai stok).
+  // Tanpa gerbang peran, pekerja bisa membaca seluruh aktivitas gudang.
+  await requireRole("supervisor");
   const db = tenantPool(tenant);
   const url = new URL(request.url);
   const days = Math.min(365, Math.max(1, Number(url.searchParams.get("days") ?? 30) || 30));
