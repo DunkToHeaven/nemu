@@ -15,3 +15,5 @@ docs/*.png
 server*.log
 e2e-*.log
 tunnel.log
+
+.vercel
