@@ -872,7 +872,10 @@
     "preview": "Preview",
     "templateDownloaded": "Excel template downloaded.",
     "entityCategories": "Categories",
-    "exportBody": "Download all master data as a single Excel file (one sheet per type)."
+    "exportBody": "Download all master data as a single Excel file (one sheet per type).",
+    "parsed": "{rows} rows read{sheet}",
+    "sheetLabel": "sheet {sheet}",
+    "emptySheet": "The file has no data rows. Make sure the first row holds the column headers."
   },
   "admin": {
     "settingsTitle": "Settings",

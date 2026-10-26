@@ -311,14 +311,41 @@ export async function previewImport(
             ${db.json({ entity: body.entity, accepted: accepted.length, rejected } as never)},
             ${user.id})`;
 
+  /**
+   * Bentuk respons HARUS sama dengan mock (`ImportJobRow`): UI membaca
+   * `job.rows`, `job.newRows`, `job.errorRows`. Versi sebelumnya hanya
+   * mengirim `summary`, sehingga halaman pratinjau langsung crash
+   * ("Cannot read properties of undefined (reading 'slice')") tepat setelah
+   * berkas berhasil diunggah.
+   */
+  const rejectedByRow = new Map(rejected.map((r) => [r.row, r.reason]));
+  const rows = body.rows.map((row, index) => {
+    const lineNo = index + 2;
+    const reason = rejectedByRow.get(lineNo) ?? null;
+    return {
+      row: lineNo,
+      status: reason ? ("error" as const) : ("new" as const),
+      sku: (row.sku ?? "").trim(),
+      name: (row.name ?? "").trim(),
+      message: reason,
+      data: row,
+    };
+  });
+
   return ok(
     {
       job: {
         id,
+        entity: body.entity,
         filename: body.filename,
         status: "preview",
         createdAt: new Date().toISOString(),
-        summary: { entity: body.entity, accepted: accepted.length, rejected },
+        appliedAt: null,
+        totalRows: rows.length,
+        newRows: rows.filter((r) => r.status === "new").length,
+        updatedRows: 0,
+        errorRows: rows.filter((r) => r.status === "error").length,
+        rows,
       },
     },
     { status: 201 },
@@ -332,9 +359,9 @@ export async function applyImport(
   tenant: string,
 ): Promise<Response> {
   const db = tenantPool(tenant);
-  const rows = await db<{ rows: Record<string, string>[]; summary: unknown; status: string }[]>`
-    SELECT rows, summary, status::text AS status FROM import_jobs WHERE id = ${id}
-  `;
+  const rows = await db<
+    { rows: Record<string, string>[]; summary: unknown; status: string; filename: string }[]
+  >`SELECT rows, summary, status::text AS status, filename FROM import_jobs WHERE id = ${id}`;
   const job = rows[0];
   if (!job) throw errors.notFound("Impor");
   if (job.status !== "preview") throw errors.conflict("IMPORT_DONE", "Impor sudah diterapkan.");
@@ -419,7 +446,45 @@ export async function applyImport(
   await db`UPDATE import_jobs SET status = 'applied', applied_at = now() WHERE id = ${id}`;
   await audit(db, user.id, "import", id, "update", null, { created, updated });
 
-  return ok({ job: { id, status: "applied" }, created, updated });
+  /**
+   * `job` di sini juga harus berbentuk `ImportJobRow` utuh: setelah Terapkan,
+   * UI memakai `job.rows` dan `job.filename` untuk merender ulang kartu
+   * pratinjau. Mengirim `{id, status}` saja membuat halaman crash sesudah
+   * impor berhasil — kegagalan yang tampak seperti impor gagal padahal data
+   * sudah masuk.
+   */
+  const appliedRows = (job.rows as Record<string, string>[] | null) ?? [];
+  const rejectedRowsSet = rejectedRows;
+  const rowsForUi = appliedRows.map((row, index) => {
+    const lineNo = index + 2;
+    const rejected = rejectedRowsSet.has(lineNo);
+    return {
+      row: lineNo,
+      status: rejected ? ("error" as const) : ("update" as const),
+      sku: (row.sku ?? "").trim(),
+      name: (row.name ?? "").trim(),
+      message: rejected ? "Ditolak saat pratinjau" : null,
+      data: row,
+    };
+  });
+
+  return ok({
+    job: {
+      id,
+      entity: summary.entity ?? "items",
+      filename: job.filename ?? "import",
+      status: "applied" as const,
+      createdAt: new Date().toISOString(),
+      appliedAt: new Date().toISOString(),
+      totalRows: rowsForUi.length,
+      newRows: created,
+      updatedRows: updated,
+      errorRows: rowsForUi.filter((r) => r.status === "error").length,
+      rows: rowsForUi,
+    },
+    created,
+    updated,
+  });
 }
 
 /* ------------------------------------------------------ sync offline */

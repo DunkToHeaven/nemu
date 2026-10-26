@@ -38,7 +38,10 @@
     "preview": "Pratinjau",
     "templateDownloaded": "Template Excel terunduh.",
     "entityCategories": "Kategori",
-    "exportBody": "Unduh seluruh master data sebagai satu berkas Excel (satu lembar per jenis)."
+    "exportBody": "Unduh seluruh master data sebagai satu berkas Excel (satu lembar per jenis).",
+    "parsed": "{rows} baris terbaca{sheet}",
+    "sheetLabel": "lembar {sheet}",
+    "emptySheet": "Berkas tidak berisi baris data. Pastikan baris pertama adalah judul kolom."
   },
   "admin": {
     "settingsTitle": "Pengaturan",

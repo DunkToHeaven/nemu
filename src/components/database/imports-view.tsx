@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { ApiError, api, type ImportJobRow } from "@/lib/api/client";
 import { keys } from "@/lib/api/keys";
 import { relativeTime } from "@/lib/format";
+import { type ParsedSheet, parseCsv, parseImportFile } from "@/lib/import-parse";
 
 const SAMPLE = `sku,name,unit,min_stock,location
 BEA-9001,Bearing 6205-2RS,pcs,10,Gudang 1/Zona B/Rak B-03
@@ -29,26 +30,20 @@ export function ImportsView() {
   const [filename, setFilename] = React.useState("import.csv");
   const [raw, setRaw] = React.useState("");
   const [job, setJob] = React.useState<ImportJobRow | null>(null);
+  /**
+   * Hasil parsing berkas yang diunggah. Disimpan terpisah dari `raw` karena
+   * XLSX tidak punya bentuk teks: isinya matriks sel, bukan string yang bisa
+   * ditampilkan di kotak CSV.
+   */
+  const [sheet, setSheet] = React.useState<ParsedSheet | null>(null);
+  const [parseError, setParseError] = React.useState<string | null>(null);
 
   const history = useQuery({ queryKey: keys.imports, queryFn: () => api.admin.imports() });
 
-  const parseRows = (text: string): Record<string, string>[] => {
-    const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
-    if (lines.length < 2) return [];
-    const headers = (lines[0] ?? "").split(",").map((cell) => cell.trim().toLowerCase());
-    return lines.slice(1).map((line) => {
-      const cells = line.split(",").map((cell) => cell.trim());
-      const row: Record<string, string> = {};
-      headers.forEach((header, index) => {
-        row[header] = cells[index] ?? "";
-      });
-      return row;
-    });
-  };
-
   const preview = useMutation({
     mutationFn: async () => {
-      const rows = parseRows(raw);
+      // Berkas yang diunggah menang atas teksarea; teksarea hanya untuk tempel manual.
+      const rows = sheet?.rows.length ? sheet.rows : parseCsv(raw).rows;
       if (rows.length === 0) throw new ApiError(422, "EMPTY", t("noFile"));
       if (rows.length > 5000) throw new ApiError(422, "TOO_LARGE", t("tooLarge"));
       return api.admin.previewImport({ entity, rows, filename });
@@ -104,17 +99,53 @@ export function ImportsView() {
           {t("chooseFile")}
           <input
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             className="sr-only"
+            data-testid="import-file"
             onChange={async (event) => {
               const file = event.target.files?.[0];
               if (!file) return;
-              const text = await file.text();
               setFilename(file.name);
-              setRaw(text);
+              setParseError(null);
+              try {
+                const parsed = await parseImportFile(file);
+                if (parsed.rows.length === 0) {
+                  setSheet(null);
+                  setRaw("");
+                  setParseError(t("emptySheet"));
+                  return;
+                }
+                setSheet(parsed);
+                // Kotak teks tetap menampilkan ringkasan supaya isi berkas bisa
+                // diperiksa sekilas walau sumbernya XLSX.
+                setRaw(
+                  [parsed.headers.join(",")]
+                    .concat(
+                      parsed.rows
+                        .slice(0, 5)
+                        .map((row) => parsed.headers.map((h) => row[h] ?? "").join(",")),
+                    )
+                    .join("\n"),
+                );
+              } catch {
+                setSheet(null);
+                setRaw("");
+                setParseError(t("invalidFile"));
+              }
             }}
           />
         </label>
+
+        {parseError ? (
+          <p className="text-2xs font-semibold text-danger-foreground">{parseError}</p>
+        ) : sheet ? (
+          <p className="text-2xs font-semibold text-success-foreground">
+            {t("parsed", {
+              rows: sheet.rows.length,
+              sheet: sheet.sheet ? ` · ${t("sheetLabel", { sheet: sheet.sheet })}` : "",
+            })}
+          </p>
+        ) : null}
 
         <div className="space-y-1.5">
           <label
@@ -137,7 +168,7 @@ export function ImportsView() {
           <Button
             size="sm"
             onClick={() => preview.mutate()}
-            disabled={preview.isPending || raw.trim().length === 0}
+            disabled={preview.isPending || (raw.trim().length === 0 && !sheet?.rows.length)}
           >
             {preview.isPending ? (
               <Icon name="spinner" className="size-4 animate-spin" />
